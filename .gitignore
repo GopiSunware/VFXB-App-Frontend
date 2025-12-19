@@ -1,0 +1,77 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+build
+*.local
+
+# Environment files - ALL of them
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.example
+*.env
+backend/.env*
+frontend/.env*
+
+# Secrets and credentials
+.git-credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+credentials.json
+secrets.json
+*secret*
+*credential*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+
+# Backend data and uploads
+/backend/data/
+!/backend/data/.gitkeep
+/backend/uploads/
+!/backend/uploads/.gitkeep
+/backend/logs/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
