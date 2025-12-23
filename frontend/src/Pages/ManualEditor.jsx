@@ -197,13 +197,14 @@ const ManualEditor = () => {
 
         {/* Main Editor Area */}
         <main className="flex-1 overflow-hidden">
-          <LivePlayerProvider>
+          <LivePlayerProvider key={`player-${aspectRatio}`}>
             <TimelineProvider
               initialData={INITIAL_TIMELINE_DATA}
-              contextId="vfxb-manual-editor"
+              contextId={`vfxb-manual-editor-${aspectRatio}`}
+              key={`timeline-${aspectRatio}`}
             >
               <div className="h-full twick-studio">
-                <TwickStudio studioConfig={studioConfig} />
+                <TwickStudio studioConfig={studioConfig} key={`studio-${aspectRatio}`} />
               </div>
             </TimelineProvider>
           </LivePlayerProvider>
