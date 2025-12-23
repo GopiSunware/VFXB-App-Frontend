@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, useNavigate, Link } from "react-router-dom";
+import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import {
   Bell,
   User as UserIcon,
@@ -342,7 +342,14 @@ const Header = ({ isSidebarOpen, setIsSidebarOpen }) => {
 export default function Layout({ children }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme } = useUI();
+
+  // Routes that should be full-screen without layout
+  const fullScreenRoutes = ['/manual-editor'];
+  const isFullScreen = fullScreenRoutes.includes(location.pathname);
+
+  console.log('[Layout] pathname:', location.pathname, 'isFullScreen:', isFullScreen);
 
   // 🆕 Sidebar open state is controlled here so the hamburger in Header is always fixed
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -363,6 +370,11 @@ export default function Layout({ children }) {
       };
     }
   }, [isSidebarOpen]);
+
+  // For full-screen routes, render children directly without layout
+  if (isFullScreen) {
+    return <>{children}</>;
+  }
 
   return (
     <>

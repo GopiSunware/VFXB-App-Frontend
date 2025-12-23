@@ -16,6 +16,7 @@ import {
   Edit3,
   Copy,
   Sparkles,
+  Layers,
   X,
 } from "lucide-react";
 import { useAuth } from "../../useAuth";
@@ -186,6 +187,13 @@ const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }) => {
         icon: Sparkles,
         path: "/ai-editor",
         active: location.pathname === "/ai-editor",
+      },
+      {
+        id: "manual-editor",
+        label: "Manual Editor",
+        icon: Layers,
+        path: "/manual-editor",
+        active: location.pathname === "/manual-editor",
       },
       {
         id: "projects",

@@ -10,6 +10,7 @@ import Projects from "./Pages/Projects";
 import Templates from "./Pages/Templates";
 import Settings from "./Pages/Settings";
 import AIEditor from "./Pages/AIEditor";
+import ManualEditor from "./Pages/ManualEditor";
 import { AuthProvider } from "./AuthContext";
 import { useUI } from "./hooks";
 import { Modal, Loading } from "./components/ui";
@@ -41,6 +42,7 @@ function AppContent() {
           <Route path="/templates" element={<Templates />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/ai-editor" element={<AIEditor />} />
+          <Route path="/manual-editor" element={<ManualEditor />} />
           <Route path="/Editor" element={<Editor />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
