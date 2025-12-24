@@ -1,21 +1,14 @@
 import React, { useState, useCallback } from "react";
-import { motion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Upload,
-  Video,
-  Image,
-  Music,
-  Type,
-  Shapes,
-  Wand2,
-  Save,
   Download,
-  ArrowLeft,
+  Share2,
+  ChevronDown,
+  Undo2,
+  Redo2,
   Settings,
-  Layers,
-  Play,
-  Pause,
+  HelpCircle,
+  Link2,
 } from "lucide-react";
 
 // Twick/VFXB Editor imports
@@ -36,16 +29,67 @@ const TwickStudioWithResolution = ({ studioConfig, videoSize }) => {
   return <TwickStudio studioConfig={studioConfig} />;
 };
 
-// Custom CSS to override Twick branding colors and make editor full-screen
+/*
+ * Design System: Clipchamp Video Editor Style
+ * Based on extracted design system from reference image
+ *
+ * Color Palette:
+ * - Primary Purple: #7C3AED
+ * - Deep Purple (hover): #6D28D9
+ * - Bright Purple: #8B5CF6
+ * - Primary Background: #1A1B1E
+ * - Secondary Background: #25262B
+ * - Tertiary Background: #2C2D33
+ * - Timeline Background: #1F2024
+ * - Panel Background: #212226
+ * - Deep Black (canvas): #0D0D0F
+ * - Primary Text: #FFFFFF
+ * - Secondary Text: #A0A1A7
+ * - Tertiary Text: #6B6C72
+ * - Border Subtle: #2E2F35
+ * - Border Medium: #3A3B42
+ */
+
 const customStyles = `
-  /* Hide the app's sidebar and header when on manual-editor */
+  /* ===== CSS Variables from Design System ===== */
+  :root {
+    --color-primary: #7C3AED;
+    --color-primary-hover: #6D28D9;
+    --color-primary-light: #8B5CF6;
+    --color-bg-primary: #1A1B1E;
+    --color-bg-secondary: #25262B;
+    --color-bg-tertiary: #2C2D33;
+    --color-bg-timeline: #1F2024;
+    --color-bg-panel: #212226;
+    --color-bg-canvas: #0D0D0F;
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: #A0A1A7;
+    --color-text-tertiary: #6B6C72;
+    --color-text-muted: #4A4B50;
+    --color-border-subtle: #2E2F35;
+    --color-border-medium: #3A3B42;
+    --color-border-strong: #4A4B52;
+    --color-success: #10B981;
+    --color-error: #EF4444;
+    --color-warning: #F59E0B;
+    --color-info: #0EA5E9;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --duration-fast: 150ms;
+    --duration-normal: 200ms;
+  }
+
+  /* ===== Hide app's sidebar and header for fullscreen editor ===== */
   body:has(.manual-editor-fullscreen) aside[class*="w-64"],
   body:has(.manual-editor-fullscreen) > div > div > aside,
   body:has(.manual-editor-fullscreen) header[class*="fixed"] {
     display: none !important;
   }
 
-  /* Make the main content take full width */
   body:has(.manual-editor-fullscreen) > div > div {
     margin-left: 0 !important;
     padding-left: 0 !important;
@@ -58,36 +102,28 @@ const customStyles = `
     padding-right: 0 !important;
   }
 
-  /* Override Twick colors with VFXB gradient colors */
+  /* ===== Twick Studio Design System Override ===== */
   .twick-studio {
-    --twick-primary: #ec4899;
-    --twick-secondary: #a855f7;
-    --twick-bg: hsl(var(--background));
-    --twick-surface: hsl(var(--card));
-    --twick-border: hsl(var(--border));
+    --twick-primary: var(--color-primary);
+    --twick-secondary: var(--color-primary-light);
+    --twick-accent: var(--color-primary);
+    --twick-bg: var(--color-bg-primary);
+    --twick-surface: var(--color-bg-secondary);
+    --twick-border: var(--color-border-subtle);
+    --twick-text: var(--color-text-primary);
+    --twick-text-muted: var(--color-text-secondary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   }
 
-  /* Dark mode overrides */
-  .dark .twick-studio,
-  [data-theme="dark"] .twick-studio {
-    --twick-bg: #111827;
-    --twick-surface: #1f2937;
-    --twick-border: #374151;
-    --twick-text: #f9fafb;
-    --twick-text-muted: #9ca3af;
-  }
-
-  /* Hide any Twick branding if present */
-  .twick-logo,
-  .twick-brand,
-  [class*="twick-watermark"] {
+  /* ===== Hide Twick branding ===== */
+  .twick-logo, .twick-brand, [class*="twick-watermark"] {
     display: none !important;
   }
 
-  /* Integrate with VFXB scrollbar styles */
+  /* ===== Scrollbar Styling ===== */
   .twick-studio ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   .twick-studio ::-webkit-scrollbar-track {
@@ -95,52 +131,360 @@ const customStyles = `
   }
 
   .twick-studio ::-webkit-scrollbar-thumb {
-    background: rgba(236, 72, 153, 0.3);
-    border-radius: 4px;
+    background: var(--color-border-medium);
+    border-radius: 3px;
   }
 
   .twick-studio ::-webkit-scrollbar-thumb:hover {
-    background: rgba(236, 72, 153, 0.5);
+    background: var(--color-border-strong);
   }
 
-  /* Hide Twick Studio's header to avoid duplicate headers */
+  /* ===== Hide Twick Studio's header ===== */
   .twick-studio .studio-container > header.header {
     display: none !important;
   }
 
-  /* Side panels - width to fit thumbnail grid (125px + 125px + 16px panel padding + buffer) */
-  .twick-studio .panel-container {
-    width: 290px !important;
-    min-width: 290px !important;
-    max-width: 290px !important;
+  /* ===== Left Icon Sidebar (wider to fit text) ===== */
+  .twick-studio .sidebar,
+  .twick-studio [class*="sidebar"] {
+    background: var(--color-bg-panel) !important;
+    border-right: 1px solid var(--color-border-subtle) !important;
+    width: 72px !important;
+    min-width: 72px !important;
+  }
+
+  /* Sidebar nav items - ensure icons AND text are visible */
+  .twick-studio .sidebar button,
+  .twick-studio [class*="sidebar"] button {
+    width: 64px !important;
+    height: auto !important;
+    min-height: 52px !important;
+    border-radius: var(--radius-lg) !important;
+    margin: 2px 4px !important;
+    padding: 6px 2px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    transition: all var(--duration-fast) var(--ease-standard) !important;
+  }
+
+  /* Ensure icons in sidebar are visible */
+  .twick-studio .sidebar svg,
+  .twick-studio [class*="sidebar"] svg,
+  .twick-studio .sidebar button svg,
+  .twick-studio [class*="sidebar"] button svg {
+    width: 22px !important;
+    height: 22px !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    color: var(--color-text-secondary) !important;
     flex-shrink: 0 !important;
   }
 
-  /* Expand canvas area */
+  /* Sidebar text labels - fully visible */
+  .twick-studio .sidebar span,
+  .twick-studio [class*="sidebar"] span,
+  .twick-studio .sidebar button span,
+  .twick-studio [class*="sidebar"] button span {
+    font-size: 9px !important;
+    line-height: 1.1 !important;
+    color: var(--color-text-tertiary) !important;
+    text-align: center !important;
+    display: block !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    max-width: 64px !important;
+  }
+
+  .twick-studio .sidebar button:hover,
+  .twick-studio [class*="sidebar"] button:hover {
+    background: var(--color-bg-tertiary) !important;
+  }
+
+  .twick-studio .sidebar button:hover svg,
+  .twick-studio [class*="sidebar"] button:hover svg {
+    color: var(--color-text-primary) !important;
+  }
+
+  .twick-studio .sidebar button:hover span,
+  .twick-studio [class*="sidebar"] button:hover span {
+    color: var(--color-text-primary) !important;
+  }
+
+  .twick-studio .sidebar button.active,
+  .twick-studio [class*="sidebar"] button.active,
+  .twick-studio .sidebar button[data-active="true"],
+  .twick-studio [class*="sidebar"] button[data-active="true"] {
+    background: var(--color-primary) !important;
+  }
+
+  .twick-studio .sidebar button.active svg,
+  .twick-studio [class*="sidebar"] button.active svg,
+  .twick-studio .sidebar button[data-active="true"] svg {
+    color: var(--color-text-primary) !important;
+  }
+
+  .twick-studio .sidebar button.active span,
+  .twick-studio [class*="sidebar"] button.active span,
+  .twick-studio .sidebar button[data-active="true"] span {
+    color: var(--color-text-primary) !important;
+  }
+
+  /* ===== Side Panels (280px per design system) ===== */
+  .twick-studio .panel-container {
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+    flex-shrink: 0 !important;
+    background: var(--color-bg-secondary) !important;
+    border-right: 1px solid var(--color-border-subtle) !important;
+  }
+
+  /* Panel headers */
+  .twick-studio .panel-header,
+  .twick-studio [class*="panel-header"] {
+    background: var(--color-bg-secondary) !important;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+    color: var(--color-text-primary) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    padding: 12px 16px !important;
+  }
+
+  /* ===== Primary Buttons ===== */
+  .twick-studio button[class*="primary"],
+  .twick-studio .btn-primary {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%) !important;
+    color: var(--color-text-primary) !important;
+    border: none !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 20px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25) !important;
+    transition: all var(--duration-normal) var(--ease-standard) !important;
+  }
+
+  .twick-studio button[class*="primary"]:hover,
+  .twick-studio .btn-primary:hover {
+    background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-primary) 100%) !important;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  /* ===== Canvas/Preview Area ===== */
   .twick-studio .main-container {
     flex: 1 !important;
     min-width: 0 !important;
     overflow: hidden !important;
+    background: var(--color-bg-canvas) !important;
   }
 
-  .twick-studio .canvas-wrapper {
+  .twick-studio .canvas-wrapper,
+  .twick-studio [class*="canvas-container"] {
     display: flex;
     justify-content: center;
     align-items: center;
     flex: 1;
-    background: #0d1117;
+    background: var(--color-bg-canvas) !important;
     min-width: 0;
     overflow: hidden;
   }
 
-  /* Ensure all content fits within viewport */
+  /* ===== Toolbar ===== */
+  .twick-studio .toolbar,
+  .twick-studio [class*="toolbar"] {
+    background: var(--color-bg-primary) !important;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+    padding: 8px 12px !important;
+  }
+
+  /* ===== Timeline Area (240px height per design system) ===== */
+  .twick-studio .timeline,
+  .twick-studio [class*="timeline-container"] {
+    background: var(--color-bg-timeline) !important;
+    border-top: 1px solid var(--color-border-subtle) !important;
+    min-height: 200px !important;
+  }
+
+  /* Timeline tracks */
+  .twick-studio .track,
+  .twick-studio [class*="track"] {
+    background: var(--color-bg-primary) !important;
+    border: 1px solid var(--color-border-subtle) !important;
+    border-radius: var(--radius-sm) !important;
+    min-height: 48px !important;
+  }
+
+  /* Timeline clips */
+  .twick-studio [class*="clip"] {
+    background: var(--color-border-medium) !important;
+    border: 1px solid var(--color-border-strong) !important;
+    border-radius: var(--radius-sm) !important;
+    transition: all var(--duration-normal) var(--ease-standard) !important;
+  }
+
+  .twick-studio [class*="clip"]:hover {
+    border-color: var(--color-primary) !important;
+  }
+
+  /* Timeline ruler */
+  .twick-studio .ruler,
+  .twick-studio [class*="ruler"] {
+    background: var(--color-bg-timeline) !important;
+    color: var(--color-text-tertiary) !important;
+    font-size: 11px !important;
+    font-family: 'SF Mono', 'Monaco', monospace !important;
+  }
+
+  /* Playhead */
+  .twick-studio [class*="playhead"] {
+    background: var(--color-text-primary) !important;
+    width: 2px !important;
+  }
+
+  /* ===== Selected State ===== */
+  .twick-studio .selected,
+  .twick-studio [class*="selected"] {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.3) !important;
+  }
+
+  /* ===== Container Sizing ===== */
   .twick-studio .studio-container {
-    height: calc(100% - 10px) !important;
-    max-height: calc(100vh - 66px) !important;
+    height: 100% !important;
+    max-height: calc(100vh - 48px) !important;
+    background: var(--color-bg-primary) !important;
   }
 
   .twick-studio .studio-content {
-    height: calc(100% - 10px) !important;
+    height: 100% !important;
+    background: var(--color-bg-primary) !important;
+  }
+
+  .twick-studio {
+    height: 100% !important;
+    background: var(--color-bg-primary) !important;
+  }
+
+  /* ===== Playback Controls ===== */
+  .twick-studio [class*="playback"],
+  .twick-studio [class*="player-controls"] {
+    background: transparent !important;
+  }
+
+  .twick-studio [class*="play-button"] {
+    background: var(--color-bg-tertiary) !important;
+    border-radius: 50% !important;
+    transition: all var(--duration-fast) var(--ease-standard) !important;
+  }
+
+  .twick-studio [class*="play-button"]:hover {
+    background: var(--color-border-medium) !important;
+  }
+
+  /* ===== Dropdown Menus ===== */
+  .twick-studio [class*="dropdown"],
+  .twick-studio [class*="menu"] {
+    background: var(--color-bg-tertiary) !important;
+    border: 1px solid var(--color-border-medium) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-lg) !important;
+    padding: 4px !important;
+  }
+
+  .twick-studio [class*="dropdown-item"],
+  .twick-studio [class*="menu-item"] {
+    padding: 10px 12px !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--color-text-primary) !important;
+    transition: background var(--duration-fast) var(--ease-standard) !important;
+  }
+
+  .twick-studio [class*="dropdown-item"]:hover,
+  .twick-studio [class*="menu-item"]:hover {
+    background: var(--color-border-medium) !important;
+  }
+
+  /* ===== Tooltips ===== */
+  .twick-studio [class*="tooltip"] {
+    background: var(--color-bg-primary) !important;
+    border: 1px solid var(--color-border-medium) !important;
+    color: var(--color-text-primary) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    box-shadow: var(--shadow-md) !important;
+  }
+
+  /* ===== Input Fields ===== */
+  .twick-studio input,
+  .twick-studio [class*="input"] {
+    background: var(--color-bg-tertiary) !important;
+    border: 1px solid var(--color-border-medium) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--color-text-primary) !important;
+    padding: 10px 12px !important;
+    transition: all var(--duration-normal) var(--ease-standard) !important;
+  }
+
+  .twick-studio input:focus,
+  .twick-studio [class*="input"]:focus {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+    outline: none !important;
+  }
+
+  .twick-studio input::placeholder {
+    color: var(--color-text-tertiary) !important;
+  }
+
+  /* ===== Media Cards ===== */
+  .twick-studio [class*="media-card"],
+  .twick-studio [class*="thumbnail"] {
+    background: var(--color-bg-tertiary) !important;
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid transparent !important;
+    transition: all var(--duration-normal) var(--ease-standard) !important;
+  }
+
+  .twick-studio [class*="media-card"]:hover,
+  .twick-studio [class*="thumbnail"]:hover {
+    border-color: var(--color-border-strong) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: var(--shadow-md) !important;
+  }
+
+  /* ===== Icon Buttons ===== */
+  .twick-studio [class*="icon-button"] {
+    background: transparent !important;
+    color: var(--color-text-secondary) !important;
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: var(--radius-md) !important;
+    transition: all var(--duration-fast) var(--ease-standard) !important;
+  }
+
+  .twick-studio [class*="icon-button"]:hover {
+    background: var(--color-bg-tertiary) !important;
+    color: var(--color-text-primary) !important;
+  }
+
+  /* ===== Accessibility: Focus States ===== */
+  .twick-studio button:focus-visible,
+  .twick-studio [role="button"]:focus-visible {
+    outline: 2px solid var(--color-primary) !important;
+    outline-offset: 2px !important;
+  }
+
+  /* ===== Loading Spinner ===== */
+  .twick-studio [class*="spinner"],
+  .twick-studio [class*="loading"] {
+    border-color: var(--color-bg-tertiary) !important;
+    border-top-color: var(--color-primary) !important;
   }
 `;
 
@@ -193,60 +537,70 @@ const ManualEditor = () => {
       {/* Inject custom styles */}
       <style>{customStyles}</style>
 
-      <div className="manual-editor-fullscreen min-h-screen bg-gray-900 flex flex-col fixed inset-0 z-[100]">
-        {/* Header */}
-        <header className="h-14 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700 px-4 flex items-center justify-between z-50">
+      <div className="manual-editor-fullscreen min-h-screen bg-[#1A1B1E] flex flex-col fixed inset-0 z-[100]">
+        {/* Header - Clipchamp style (48px height per design system) */}
+        <header className="h-12 bg-[#1A1B1E] border-b border-[#2E2F35] px-4 flex items-center justify-between z-50">
+          {/* Left side - Logo and project name */}
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate(-1)}
-              className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-r from-pink-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Layers className="w-4 h-4 text-white" />
+            {/* Logo */}
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-[#7C3AED] rounded-md flex items-center justify-center">
+                <span className="text-white font-bold text-sm">V</span>
               </div>
-              <div>
-                <h1 className="text-lg font-semibold bg-gradient-to-r from-pink-400 to-purple-500 bg-clip-text text-transparent">
-                  VFXB Manual Editor
-                </h1>
-                <p className="text-xs text-gray-500">
-                  Timeline-based video editing
-                </p>
-              </div>
+              <span className="text-[#FFFFFF] font-semibold text-sm">VFXB</span>
             </div>
-          </div>
 
-          {/* Aspect Ratio Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Aspect:</span>
-            <div className="flex bg-gray-700/50 rounded-lg p-1">
-              {["9:16", "16:9", "1:1", "4:5"].map((ratio) => (
-                <button
-                  key={ratio}
-                  onClick={() => handleAspectRatioChange(ratio)}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                    aspectRatio === ratio
-                      ? "bg-gradient-to-r from-pink-500 to-purple-600 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-gray-600"
-                  }`}
+            {/* Project name dropdown */}
+            <button className="flex items-center gap-1 px-2 py-1 text-[#FFFFFF] text-sm hover:bg-[#2C2D33] rounded-md transition-all duration-150">
+              <span>Video Project</span>
+              <ChevronDown className="w-4 h-4 text-[#A0A1A7]" />
+            </button>
+
+            {/* Aspect Ratio Selector - as Size dropdown */}
+            <div className="flex items-center border-l border-[#2E2F35] pl-4">
+              <div className="relative">
+                <select
+                  value={aspectRatio}
+                  onChange={(e) => handleAspectRatioChange(e.target.value)}
+                  className="appearance-none bg-transparent text-[#FFFFFF] text-sm px-2 py-1 pr-6 hover:bg-[#2C2D33] rounded-md cursor-pointer transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-opacity-30"
                 >
-                  {ratio}
-                </button>
-              ))}
+                  <option value="9:16" className="bg-[#1A1B1E]">9:16 (Vertical)</option>
+                  <option value="16:9" className="bg-[#1A1B1E]">16:9 (Landscape)</option>
+                  <option value="1:1" className="bg-[#1A1B1E]">1:1 (Square)</option>
+                  <option value="4:5" className="bg-[#1A1B1E]">4:5 (Portrait)</option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-[#A0A1A7] absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
-              <Save className="w-4 h-4" />
-              <span className="hidden sm:inline">Save</span>
+          {/* Right side - Actions */}
+          <div className="flex items-center gap-3">
+            {/* Utility icons (36x36px per design system) */}
+            <button className="w-9 h-9 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150">
+              <Link2 className="w-5 h-5" />
             </button>
-            <button className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 transition-all">
+            <button className="w-9 h-9 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150">
+              <Settings className="w-5 h-5" />
+            </button>
+            <button className="w-9 h-9 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150">
+              <HelpCircle className="w-5 h-5" />
+            </button>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-[#2E2F35]"></div>
+
+            {/* Share button - Secondary button style */}
+            <button className="flex items-center gap-2 px-4 py-2 text-sm text-[#FFFFFF] bg-transparent border border-[#3A3B42] hover:bg-[#2C2D33] hover:border-[#4A4B52] rounded-md transition-all duration-200">
+              <Share2 className="w-4 h-4" />
+              <span>Share</span>
+            </button>
+
+            {/* Export button - Primary button with gradient */}
+            <button className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-[#FFFFFF] rounded-md transition-all duration-200 shadow-[0_2px_8px_rgba(124,58,237,0.25)] hover:shadow-[0_4px_12px_rgba(124,58,237,0.35)] hover:-translate-y-0.5"
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export</span>
+              <span>Export</span>
             </button>
           </div>
         </header>
@@ -265,23 +619,6 @@ const ManualEditor = () => {
             </TimelineProvider>
           </LivePlayerProvider>
         </main>
-
-        {/* Footer / Status Bar */}
-        <footer className="h-8 bg-gray-800/80 border-t border-gray-700 px-4 flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-4">
-            <span>VFXB Manual Editor v1.0</span>
-            <span className="text-gray-600">|</span>
-            <span>
-              Canvas: {videoSize.width} x {videoSize.height}
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              Ready
-            </span>
-          </div>
-        </footer>
       </div>
     </>
   );
