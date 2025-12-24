@@ -789,6 +789,7 @@ const ManualEditor = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempProjectName, setTempProjectName] = useState("Video Project");
   const [videoLoadedToTimeline, setVideoLoadedToTimeline] = useState(false);
+  const videoFileInputRef = useRef(null);
 
   // Global video store - shared between AI Editor and Manual Editor
   const storeCurrentVideo = useVideoStore((state) => state.currentVideo);
@@ -993,6 +994,50 @@ const ManualEditor = () => {
   const handleSwitchToAIEditor = useCallback(() => {
     navigate("/ai-editor");
   }, [navigate]);
+
+  // Video file upload handler
+  const handleVideoFileSelect = useCallback((event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate it's a video file
+    const validVideoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo'];
+    if (!validVideoTypes.includes(file.type) && !file.type.startsWith('video/')) {
+      alert('Please select a valid video file (MP4, WebM, OGG, MOV, AVI)');
+      return;
+    }
+
+    // Create blob URL for local playback
+    const videoUrl = URL.createObjectURL(file);
+
+    // Create video object compatible with the store
+    const videoData = {
+      id: `local_${Date.now()}`,
+      name: file.name,
+      url: videoUrl,
+      type: file.type,
+      size: file.size,
+      isLocal: true, // Flag to indicate this is a local file
+    };
+
+    // Store in global video store
+    setCurrentVideo(videoData);
+
+    // Update project name from video filename
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+    setProjectName(nameWithoutExt);
+
+    // Reset timeline state so it reloads with the new video
+    setVideoLoadedToTimeline(false);
+
+    // Clear the input so the same file can be selected again
+    event.target.value = '';
+  }, [setCurrentVideo, setProjectName, setVideoLoadedToTimeline]);
+
+  // Trigger file input click
+  const handleUploadVideoClick = useCallback(() => {
+    videoFileInputRef.current?.click();
+  }, []);
 
   // Project name editing
   const startEditingName = useCallback(() => {
@@ -1241,11 +1286,30 @@ const ManualEditor = () => {
             {/* Divider */}
             <div className="w-px h-6 bg-[#2E2F35]"></div>
 
-            {/* Load button */}
+            {/* Hidden file input for video upload */}
+            <input
+              type="file"
+              ref={videoFileInputRef}
+              onChange={handleVideoFileSelect}
+              accept="video/*,.mp4,.webm,.ogg,.mov,.avi"
+              className="hidden"
+            />
+
+            {/* Upload Video button */}
+            <button
+              onClick={handleUploadVideoClick}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#FFFFFF] bg-[#7C3AED] hover:bg-[#6D28D9] rounded-md transition-all duration-200"
+              title="Upload Video File"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Upload</span>
+            </button>
+
+            {/* Load Project button */}
             <button
               onClick={handleLoadProject}
               className="flex items-center gap-2 px-3 py-2 text-sm text-[#FFFFFF] bg-transparent hover:bg-[#2C2D33] rounded-md transition-all duration-200"
-              title="Load Project (Open)"
+              title="Load Project (JSON)"
             >
               <FolderOpen className="w-4 h-4" />
               <span>Open</span>
