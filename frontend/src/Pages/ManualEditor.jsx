@@ -9,22 +9,36 @@ import {
   Settings,
   HelpCircle,
   Link2,
+  Save,
+  FolderOpen,
 } from "lucide-react";
 
 // Twick/VFXB Editor imports
 import { LivePlayerProvider } from "@twick/live-player";
 import { TwickStudio } from "@twick/studio";
 import { TimelineProvider, useTimelineContext, INITIAL_TIMELINE_DATA } from "@twick/timeline";
+import { saveAsFile, loadFile } from "@twick/media-utils";
 import "@twick/studio/dist/studio.css";
 
-// Inner component that uses timeline context to update resolution
-const TwickStudioWithResolution = ({ studioConfig, videoSize }) => {
-  const { setVideoResolution } = useTimelineContext();
+// Inner component that uses timeline context for all editor operations
+const EditorWithContext = ({ studioConfig, videoSize, onUndoRedo }) => {
+  const {
+    setVideoResolution,
+    editor,
+    present,
+    canUndo,
+    canRedo
+  } = useTimelineContext();
 
   // Update resolution when videoSize changes
   React.useEffect(() => {
     setVideoResolution({ width: videoSize.width, height: videoSize.height });
   }, [videoSize.width, videoSize.height, setVideoResolution]);
+
+  // Pass undo/redo state up to parent
+  React.useEffect(() => {
+    onUndoRedo({ canUndo, canRedo, editor, present });
+  }, [canUndo, canRedo, editor, present, onUndoRedo]);
 
   return <TwickStudio studioConfig={studioConfig} />;
 };
@@ -547,6 +561,15 @@ const ManualEditor = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [videoSize, setVideoSize] = useState({ width: 1080, height: 1920 }); // 9:16 default
   const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [projectName, setProjectName] = useState("Video Project");
+
+  // Undo/Redo state from timeline context
+  const [editorState, setEditorState] = useState({
+    canUndo: false,
+    canRedo: false,
+    editor: null,
+    present: null
+  });
 
   // Get uploaded video from navigation state if available
   const uploadedVideo = location.state?.uploadedVideo;
@@ -571,6 +594,53 @@ const ManualEditor = () => {
       default:
         setVideoSize({ width: 1080, height: 1920 });
     }
+  }, []);
+
+  // Handle undo/redo state updates from EditorWithContext
+  const handleUndoRedoUpdate = useCallback((state) => {
+    setEditorState(state);
+  }, []);
+
+  // Undo action
+  const handleUndo = useCallback(() => {
+    if (editorState.canUndo && editorState.editor) {
+      editorState.editor.undo();
+    }
+  }, [editorState]);
+
+  // Redo action
+  const handleRedo = useCallback(() => {
+    if (editorState.canRedo && editorState.editor) {
+      editorState.editor.redo();
+    }
+  }, [editorState]);
+
+  // Save project as JSON file
+  const handleSaveProject = useCallback(async () => {
+    if (!editorState.present) {
+      alert("No project data to save");
+      return;
+    }
+    try {
+      const fileName = prompt("Enter project name:", projectName) || projectName;
+      setProjectName(fileName);
+      await saveAsFile(
+        JSON.stringify(editorState.present, null, 2),
+        "application/json",
+        `${fileName}.json`
+      );
+    } catch (error) {
+      console.error("Error saving project:", error);
+      alert("Failed to save project");
+    }
+  }, [editorState.present, projectName]);
+
+  // Export video (placeholder - server-side rendering required)
+  const handleExport = useCallback(() => {
+    alert(
+      "Export feature requires server-side rendering setup.\n\n" +
+      "Current project can be saved as JSON and exported later when the render server is configured."
+    );
   }, []);
 
   // Studio configuration
@@ -605,7 +675,7 @@ const ManualEditor = () => {
 
             {/* Project name dropdown */}
             <button className="flex items-center gap-1 px-2 py-1 text-[#FFFFFF] text-sm hover:bg-[#2C2D33] rounded-md transition-all duration-150">
-              <span>Video Project</span>
+              <span>{projectName}</span>
               <ChevronDown className="w-4 h-4 text-[#A0A1A7]" />
             </button>
 
@@ -625,6 +695,37 @@ const ManualEditor = () => {
                 <ChevronDown className="w-3 h-3 text-[#A0A1A7] absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-[#2E2F35]"></div>
+
+            {/* Undo/Redo buttons */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleUndo}
+                disabled={!editorState.canUndo}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
+                  editorState.canUndo
+                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
+                    : "text-[#4A4B50] cursor-not-allowed"
+                }`}
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={!editorState.canRedo}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
+                  editorState.canRedo
+                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
+                    : "text-[#4A4B50] cursor-not-allowed"
+                }`}
+                title="Redo (Ctrl+Y)"
+              >
+                <Redo2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Right side - Actions */}
@@ -643,6 +744,16 @@ const ManualEditor = () => {
             {/* Divider */}
             <div className="w-px h-6 bg-[#2E2F35]"></div>
 
+            {/* Save button */}
+            <button
+              onClick={handleSaveProject}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#FFFFFF] bg-transparent hover:bg-[#2C2D33] rounded-md transition-all duration-200"
+              title="Save Project"
+            >
+              <Save className="w-4 h-4" />
+              <span>Save</span>
+            </button>
+
             {/* Share button - Secondary button style */}
             <button className="flex items-center gap-2 px-4 py-2 text-sm text-[#FFFFFF] bg-transparent border border-[#3A3B42] hover:bg-[#2C2D33] hover:border-[#4A4B52] rounded-md transition-all duration-200">
               <Share2 className="w-4 h-4" />
@@ -650,8 +761,11 @@ const ManualEditor = () => {
             </button>
 
             {/* Export button - Primary button with gradient */}
-            <button className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-[#FFFFFF] rounded-md transition-all duration-200 shadow-[0_2px_8px_rgba(124,58,237,0.25)] hover:shadow-[0_4px_12px_rgba(124,58,237,0.35)] hover:-translate-y-0.5"
-              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-[#FFFFFF] rounded-md transition-all duration-200 shadow-[0_2px_8px_rgba(124,58,237,0.25)] hover:shadow-[0_4px_12px_rgba(124,58,237,0.35)] hover:-translate-y-0.5"
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}
+            >
               <Download className="w-4 h-4" />
               <span>Export</span>
             </button>
@@ -667,7 +781,11 @@ const ManualEditor = () => {
               resolution={{ width: videoSize.width, height: videoSize.height }}
             >
               <div className="h-full twick-studio">
-                <TwickStudioWithResolution studioConfig={studioConfig} videoSize={videoSize} />
+                <EditorWithContext
+                  studioConfig={studioConfig}
+                  videoSize={videoSize}
+                  onUndoRedo={handleUndoRedoUpdate}
+                />
               </div>
             </TimelineProvider>
           </LivePlayerProvider>
