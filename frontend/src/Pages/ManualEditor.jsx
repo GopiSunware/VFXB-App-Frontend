@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Download,
@@ -11,34 +11,65 @@ import {
   Link2,
   Save,
   FolderOpen,
+  Home,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  Pencil,
+  Check,
+  X,
+  Scissors,
+  Trash2,
+  Copy,
 } from "lucide-react";
 
 // Twick/VFXB Editor imports
-import { LivePlayerProvider } from "@twick/live-player";
+import { LivePlayerProvider, useLivePlayerContext, PLAYER_STATE } from "@twick/live-player";
 import { TwickStudio } from "@twick/studio";
 import { TimelineProvider, useTimelineContext, INITIAL_TIMELINE_DATA } from "@twick/timeline";
 import { saveAsFile, loadFile } from "@twick/media-utils";
 import "@twick/studio/dist/studio.css";
 
-// Inner component that uses timeline context for all editor operations
-const EditorWithContext = ({ studioConfig, videoSize, onUndoRedo }) => {
+// Inner component that uses timeline and player context for all editor operations
+const EditorWithContext = ({ studioConfig, videoSize, onEditorState }) => {
   const {
     setVideoResolution,
     editor,
     present,
     canUndo,
-    canRedo
+    canRedo,
+    selectedItem
   } = useTimelineContext();
+
+  const {
+    playerVolume,
+    setPlayerVolume,
+    playerState,
+    setPlayerState,
+    currentTime
+  } = useLivePlayerContext();
 
   // Update resolution when videoSize changes
   React.useEffect(() => {
     setVideoResolution({ width: videoSize.width, height: videoSize.height });
   }, [videoSize.width, videoSize.height, setVideoResolution]);
 
-  // Pass undo/redo state up to parent
+  // Pass all editor state up to parent
   React.useEffect(() => {
-    onUndoRedo({ canUndo, canRedo, editor, present });
-  }, [canUndo, canRedo, editor, present, onUndoRedo]);
+    onEditorState({
+      canUndo,
+      canRedo,
+      editor,
+      present,
+      playerVolume,
+      setPlayerVolume,
+      playerState,
+      setPlayerState,
+      selectedItem,
+      currentTime
+    });
+  }, [canUndo, canRedo, editor, present, playerVolume, setPlayerVolume, playerState, setPlayerState, selectedItem, currentTime, onEditorState]);
 
   return <TwickStudio studioConfig={studioConfig} />;
 };
@@ -562,13 +593,21 @@ const ManualEditor = () => {
   const [videoSize, setVideoSize] = useState({ width: 1080, height: 1920 }); // 9:16 default
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [projectName, setProjectName] = useState("Video Project");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempProjectName, setTempProjectName] = useState("Video Project");
 
-  // Undo/Redo state from timeline context
+  // Editor state from timeline and player contexts
   const [editorState, setEditorState] = useState({
     canUndo: false,
     canRedo: false,
     editor: null,
-    present: null
+    present: null,
+    playerVolume: 1,
+    setPlayerVolume: null,
+    playerState: 'paused',
+    setPlayerState: null,
+    selectedItem: null,
+    currentTime: 0
   });
 
   // Get uploaded video from navigation state if available
@@ -596,8 +635,8 @@ const ManualEditor = () => {
     }
   }, []);
 
-  // Handle undo/redo state updates from EditorWithContext
-  const handleUndoRedoUpdate = useCallback((state) => {
+  // Handle editor state updates from EditorWithContext
+  const handleEditorStateUpdate = useCallback((state) => {
     setEditorState(state);
   }, []);
 
@@ -615,6 +654,108 @@ const ManualEditor = () => {
     }
   }, [editorState]);
 
+  // Volume control
+  const handleVolumeChange = useCallback((newVolume) => {
+    if (editorState.setPlayerVolume) {
+      editorState.setPlayerVolume(newVolume);
+    }
+  }, [editorState.setPlayerVolume]);
+
+  // Mute toggle
+  const [previousVolume, setPreviousVolume] = useState(1);
+  const handleMuteToggle = useCallback(() => {
+    if (editorState.setPlayerVolume) {
+      if (editorState.playerVolume > 0) {
+        setPreviousVolume(editorState.playerVolume);
+        editorState.setPlayerVolume(0);
+      } else {
+        editorState.setPlayerVolume(previousVolume);
+      }
+    }
+  }, [editorState.setPlayerVolume, editorState.playerVolume, previousVolume]);
+
+  // Play/Pause toggle
+  const handlePlayPause = useCallback(() => {
+    if (editorState.setPlayerState) {
+      const newState = editorState.playerState === PLAYER_STATE.PLAYING
+        ? PLAYER_STATE.PAUSED
+        : PLAYER_STATE.PLAYING;
+      editorState.setPlayerState(newState);
+    }
+  }, [editorState.setPlayerState, editorState.playerState]);
+
+  // Split selected element at current playhead position
+  const handleSplit = useCallback(async () => {
+    if (!editorState.editor || !editorState.selectedItem) {
+      return;
+    }
+    // Check if selected item is a TrackElement (not a Track)
+    if (editorState.selectedItem.getStart && editorState.selectedItem.getEnd) {
+      const element = editorState.selectedItem;
+      const splitTime = editorState.currentTime;
+
+      // Check if playhead is within the element's time range
+      if (splitTime > element.getStart() && splitTime < element.getEnd()) {
+        const result = await editorState.editor.splitElement(element, splitTime);
+        if (!result.success) {
+          console.warn("Failed to split element");
+        }
+      }
+    }
+  }, [editorState.editor, editorState.selectedItem, editorState.currentTime]);
+
+  // Delete selected element
+  const handleDelete = useCallback(() => {
+    if (!editorState.editor || !editorState.selectedItem) {
+      return;
+    }
+    if (editorState.selectedItem.getStart) {
+      editorState.editor.removeElement(editorState.selectedItem);
+    }
+  }, [editorState.editor, editorState.selectedItem]);
+
+  // Duplicate selected element
+  const handleDuplicate = useCallback(() => {
+    if (!editorState.editor || !editorState.selectedItem) {
+      return;
+    }
+    if (editorState.selectedItem.getStart) {
+      const cloned = editorState.editor.cloneElement(editorState.selectedItem);
+      if (cloned) {
+        // Offset the cloned element's start time
+        const originalEnd = editorState.selectedItem.getEnd();
+        cloned.setStart(originalEnd);
+        editorState.editor.addElement(cloned);
+      }
+    }
+  }, [editorState.editor, editorState.selectedItem]);
+
+  // Project name editing
+  const startEditingName = useCallback(() => {
+    setTempProjectName(projectName);
+    setIsEditingName(true);
+  }, [projectName]);
+
+  const confirmNameEdit = useCallback(() => {
+    if (tempProjectName.trim()) {
+      setProjectName(tempProjectName.trim());
+    }
+    setIsEditingName(false);
+  }, [tempProjectName]);
+
+  const cancelNameEdit = useCallback(() => {
+    setTempProjectName(projectName);
+    setIsEditingName(false);
+  }, [projectName]);
+
+  const handleNameKeyDown = useCallback((e) => {
+    if (e.key === 'Enter') {
+      confirmNameEdit();
+    } else if (e.key === 'Escape') {
+      cancelNameEdit();
+    }
+  }, [confirmNameEdit, cancelNameEdit]);
+
   // Save project as JSON file
   const handleSaveProject = useCallback(async () => {
     if (!editorState.present) {
@@ -622,12 +763,10 @@ const ManualEditor = () => {
       return;
     }
     try {
-      const fileName = prompt("Enter project name:", projectName) || projectName;
-      setProjectName(fileName);
       await saveAsFile(
         JSON.stringify(editorState.present, null, 2),
         "application/json",
-        `${fileName}.json`
+        `${projectName}.json`
       );
     } catch (error) {
       console.error("Error saving project:", error);
@@ -642,6 +781,60 @@ const ManualEditor = () => {
       "Current project can be saved as JSON and exported later when the render server is configured."
     );
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't trigger shortcuts when typing in input fields
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Check for Ctrl/Cmd key combinations
+      if (e.ctrlKey || e.metaKey) {
+        // Undo: Ctrl+Z (without Shift)
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+        }
+        // Redo: Ctrl+Y or Ctrl+Shift+Z
+        if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          handleRedo();
+        }
+        // Duplicate: Ctrl+D
+        if (e.key === 'd') {
+          e.preventDefault();
+          handleDuplicate();
+        }
+        // Save: Ctrl+S
+        if (e.key === 's') {
+          e.preventDefault();
+          handleSaveProject();
+        }
+      }
+
+      // Space: Play/Pause toggle
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        handlePlayPause();
+      }
+
+      // S: Split element at playhead
+      if (e.key === 's' && !e.ctrlKey && !e.metaKey) {
+        handleSplit();
+      }
+
+      // Delete/Backspace: Delete selected element
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, handlePlayPause, handleSplit, handleDelete, handleDuplicate, handleSaveProject]);
 
   // Studio configuration
   const studioConfig = {
@@ -673,11 +866,43 @@ const ManualEditor = () => {
               <span className="text-[#FFFFFF] font-semibold text-sm">VFXB</span>
             </div>
 
-            {/* Project name dropdown */}
-            <button className="flex items-center gap-1 px-2 py-1 text-[#FFFFFF] text-sm hover:bg-[#2C2D33] rounded-md transition-all duration-150">
-              <span>{projectName}</span>
-              <ChevronDown className="w-4 h-4 text-[#A0A1A7]" />
-            </button>
+            {/* Project name - editable */}
+            {isEditingName ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={tempProjectName}
+                  onChange={(e) => setTempProjectName(e.target.value)}
+                  onKeyDown={handleNameKeyDown}
+                  autoFocus
+                  className="px-2 py-1 text-[#FFFFFF] text-sm bg-[#2C2D33] border border-[#7C3AED] rounded-md outline-none w-40"
+                  placeholder="Project name"
+                />
+                <button
+                  onClick={confirmNameEdit}
+                  className="w-6 h-6 flex items-center justify-center text-[#10B981] hover:bg-[#2C2D33] rounded transition-all"
+                  title="Confirm"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={cancelNameEdit}
+                  className="w-6 h-6 flex items-center justify-center text-[#EF4444] hover:bg-[#2C2D33] rounded transition-all"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={startEditingName}
+                className="flex items-center gap-1 px-2 py-1 text-[#FFFFFF] text-sm hover:bg-[#2C2D33] rounded-md transition-all duration-150 group"
+                title="Click to edit project name"
+              >
+                <span>{projectName}</span>
+                <Pencil className="w-3 h-3 text-[#6B6C72] opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
 
             {/* Aspect Ratio Selector - as Size dropdown */}
             <div className="flex items-center border-l border-[#2E2F35] pl-4">
@@ -724,6 +949,93 @@ const ManualEditor = () => {
                 title="Redo (Ctrl+Y)"
               >
                 <Redo2 className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-[#2E2F35]"></div>
+
+            {/* Play/Pause and Volume controls */}
+            <div className="flex items-center gap-2">
+              {/* Play/Pause button */}
+              <button
+                onClick={handlePlayPause}
+                className="w-8 h-8 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150"
+                title={editorState.playerState === PLAYER_STATE.PLAYING ? "Pause (Space)" : "Play (Space)"}
+              >
+                {editorState.playerState === PLAYER_STATE.PLAYING ? (
+                  <Pause className="w-4 h-4" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+              </button>
+
+              {/* Volume controls */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleMuteToggle}
+                  className="w-8 h-8 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150"
+                  title={editorState.playerVolume > 0 ? "Mute" : "Unmute"}
+                >
+                  {editorState.playerVolume > 0 ? (
+                    <Volume2 className="w-4 h-4" />
+                  ) : (
+                    <VolumeX className="w-4 h-4" />
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={editorState.playerVolume}
+                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                  className="w-16 h-1 bg-[#3A3B42] rounded-full appearance-none cursor-pointer accent-[#7C3AED]"
+                  title={`Volume: ${Math.round(editorState.playerVolume * 100)}%`}
+                />
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-[#2E2F35]"></div>
+
+            {/* Edit controls (require selected element) */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleSplit}
+                disabled={!editorState.selectedItem}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
+                  editorState.selectedItem
+                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
+                    : "text-[#4A4B50] cursor-not-allowed"
+                }`}
+                title="Split at playhead (S)"
+              >
+                <Scissors className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDuplicate}
+                disabled={!editorState.selectedItem}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
+                  editorState.selectedItem
+                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
+                    : "text-[#4A4B50] cursor-not-allowed"
+                }`}
+                title="Duplicate (Ctrl+D)"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={!editorState.selectedItem}
+                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
+                  editorState.selectedItem
+                    ? "text-[#A0A1A7] hover:text-[#EF4444] hover:bg-[#2C2D33]"
+                    : "text-[#4A4B50] cursor-not-allowed"
+                }`}
+                title="Delete (Del)"
+              >
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -784,7 +1096,7 @@ const ManualEditor = () => {
                 <EditorWithContext
                   studioConfig={studioConfig}
                   videoSize={videoSize}
-                  onUndoRedo={handleUndoRedoUpdate}
+                  onEditorState={handleEditorStateUpdate}
                 />
               </div>
             </TimelineProvider>
