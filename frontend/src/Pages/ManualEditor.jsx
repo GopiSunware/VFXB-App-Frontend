@@ -281,17 +281,25 @@ const customStyles = `
     min-width: 0 !important;
     overflow: hidden !important;
     background: var(--color-bg-canvas) !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  .twick-studio .canvas-wrapper,
-  .twick-studio [class*="canvas-container"] {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex: 1;
+  .twick-studio .canvas-wrapper {
+    display: flex !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     background: var(--color-bg-canvas) !important;
-    min-width: 0;
-    overflow: hidden;
+  }
+
+  .twick-studio .canvas-container {
+    display: flex !important;
+    flex: 1 1 0 !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
   }
 
   /* ===== Toolbar ===== */
@@ -302,48 +310,93 @@ const customStyles = `
     padding: 8px 12px !important;
   }
 
-  /* ===== Timeline Area (240px height per design system) ===== */
-  .twick-studio .timeline,
-  .twick-studio [class*="timeline-container"] {
+  /* ===== Timeline Section Layout (Clipchamp-style proportions) ===== */
+  /* Main container must constrain to available height */
+  .twick-studio .twick-editor-main-container {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* Canvas/view area - shrink to fit, let timeline have fixed space */
+  .twick-studio .twick-editor-view-section {
+    flex: 1 1 0 !important;
+    min-height: 200px !important;
+    overflow: hidden !important;
+  }
+
+  /* Canvas container inside view section */
+  .twick-studio .twick-editor-canvas-container {
+    background: var(--color-bg-canvas) !important;
+    height: 100% !important;
+  }
+
+  /* Timeline section - fixed 220px like Clipchamp */
+  .twick-studio .twick-editor-timeline-section {
     background: var(--color-bg-timeline) !important;
     border-top: 1px solid var(--color-border-subtle) !important;
-    min-height: 200px !important;
+    flex: 0 0 220px !important;
+    height: 220px !important;
+    min-height: 220px !important;
+    max-height: 220px !important;
   }
 
-  /* Timeline tracks */
-  .twick-studio .track,
-  .twick-studio [class*="track"] {
+  /* Timeline controls bar */
+  .twick-studio .twick-editor-timeline-controls {
     background: var(--color-bg-primary) !important;
-    border: 1px solid var(--color-border-subtle) !important;
-    border-radius: var(--radius-sm) !important;
-    min-height: 48px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    flex-shrink: 0 !important;
   }
 
-  /* Timeline clips */
-  .twick-studio [class*="clip"] {
+  /* Timeline tracks container - scrollable area for tracks */
+  .twick-studio .twick-editor-timeline-tracks,
+  .twick-studio [class*="timeline-tracks"],
+  .twick-studio [class*="tracks-container"] {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    min-height: 120px !important;
+  }
+
+  /* Individual tracks - proper height like Clipchamp (~50px each) */
+  .twick-studio .twick-track {
+    background: var(--color-bg-primary) !important;
+    min-height: 50px !important;
+    height: 50px !important;
+  }
+
+  /* Track header styling */
+  .twick-studio .twick-track-header {
+    background: var(--color-bg-panel) !important;
+    min-width: 100px !important;
+  }
+
+  /* Track elements (clips on timeline) */
+  .twick-studio .twick-track-element {
     background: var(--color-border-medium) !important;
     border: 1px solid var(--color-border-strong) !important;
     border-radius: var(--radius-sm) !important;
-    transition: all var(--duration-normal) var(--ease-standard) !important;
   }
 
-  .twick-studio [class*="clip"]:hover {
+  .twick-studio .twick-track-element:hover {
     border-color: var(--color-primary) !important;
   }
 
-  /* Timeline ruler */
-  .twick-studio .ruler,
-  .twick-studio [class*="ruler"] {
-    background: var(--color-bg-timeline) !important;
-    color: var(--color-text-tertiary) !important;
-    font-size: 11px !important;
-    font-family: 'SF Mono', 'Monaco', monospace !important;
+  /* Playhead */
+  .twick-studio .twick-seek-track-playhead,
+  .twick-studio .twick-seek-track-pin {
+    background: var(--color-text-primary) !important;
   }
 
-  /* Playhead */
-  .twick-studio [class*="playhead"] {
-    background: var(--color-text-primary) !important;
-    width: 2px !important;
+  /* Time ruler area */
+  .twick-studio .twick-seek-track,
+  .twick-studio [class*="time-ruler"],
+  .twick-studio [class*="seek-track"] {
+    height: 30px !important;
+    min-height: 30px !important;
+    background: var(--color-bg-timeline) !important;
   }
 
   /* ===== Selected State ===== */

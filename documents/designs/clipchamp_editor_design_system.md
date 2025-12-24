@@ -1157,6 +1157,85 @@ All interactive elements must have visible focus indicators:
 
 ---
 
+# Layout Architecture
+
+## Vertical Layout Distribution
+
+The editor uses a flex column layout for optimal vertical space distribution:
+
+| Section | Height | Flex | Description |
+|---------|--------|------|-------------|
+| **Header** | 48px | Fixed | Logo, project name, aspect ratio selector, action buttons |
+| **Main Content** | Remaining | `flex: 1` | Contains sidebar, panels, canvas, and timeline |
+
+### Main Content Area (Horizontal Split)
+
+| Component | Width | Description |
+|-----------|-------|-------------|
+| **Icon Sidebar** | 72px | Tool icons with text labels |
+| **Side Panel** | 280px | Context-specific content (Video Library, properties, etc.) |
+| **Editor Area** | Remaining | Canvas and timeline |
+| **Properties Panel** | 280px | Element properties (when element selected) |
+
+### Editor Area (Vertical Split)
+
+| Section | Height | Flex | Description |
+|---------|--------|------|-------------|
+| **Canvas/Preview** | Flexible | `flex: 1 1 0` | Video preview area, shrinks to accommodate timeline |
+| **Timeline** | 220px | `flex: 0 0 220px` | Fixed height timeline section |
+
+### Timeline Section Breakdown
+
+| Component | Height | Description |
+|-----------|--------|-------------|
+| **Controls Bar** | 40px | Play/pause, time display, zoom controls |
+| **Time Ruler** | 30px | Timestamp markers |
+| **Tracks Container** | ~150px | Scrollable area for timeline tracks |
+
+### Track Specifications
+
+| Property | Value | Description |
+|----------|-------|-------------|
+| **Track Height** | 50px | Individual track height |
+| **Track Header** | 100px width | Drag handle, track label |
+| **Visible Tracks** | ~3 | Number of tracks visible without scrolling |
+
+## CSS Implementation
+
+```css
+/* Main container flex distribution */
+.twick-editor-main-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* Canvas area - flexible height */
+.twick-editor-view-section {
+  flex: 1 1 0;
+  min-height: 200px;
+  overflow: hidden;
+}
+
+/* Timeline - fixed 220px */
+.twick-editor-timeline-section {
+  flex: 0 0 220px;
+  height: 220px;
+  min-height: 220px;
+  max-height: 220px;
+}
+
+/* Individual tracks */
+.twick-track {
+  height: 50px;
+  min-height: 50px;
+}
+```
+
+---
+
 # Implementation Notes
 
 ## CSS Variables Setup
