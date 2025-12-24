@@ -21,8 +21,20 @@ import {
 // Twick/VFXB Editor imports
 import { LivePlayerProvider } from "@twick/live-player";
 import { TwickStudio } from "@twick/studio";
-import { TimelineProvider, INITIAL_TIMELINE_DATA } from "@twick/timeline";
+import { TimelineProvider, useTimelineContext, INITIAL_TIMELINE_DATA } from "@twick/timeline";
 import "@twick/studio/dist/studio.css";
+
+// Inner component that uses timeline context to update resolution
+const TwickStudioWithResolution = ({ studioConfig, videoSize }) => {
+  const { setVideoResolution } = useTimelineContext();
+
+  // Update resolution when videoSize changes
+  React.useEffect(() => {
+    setVideoResolution({ width: videoSize.width, height: videoSize.height });
+  }, [videoSize.width, videoSize.height, setVideoResolution]);
+
+  return <TwickStudio studioConfig={studioConfig} />;
+};
 
 // Custom CSS to override Twick branding colors and make editor full-screen
 const customStyles = `
@@ -90,6 +102,46 @@ const customStyles = `
   .twick-studio ::-webkit-scrollbar-thumb:hover {
     background: rgba(236, 72, 153, 0.5);
   }
+
+  /* Hide Twick Studio's header to avoid duplicate headers */
+  .twick-studio .studio-container > header.header {
+    display: none !important;
+  }
+
+  /* Side panels - width to fit thumbnail grid (125px + 125px + 16px panel padding + buffer) */
+  .twick-studio .panel-container {
+    width: 290px !important;
+    min-width: 290px !important;
+    max-width: 290px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Expand canvas area */
+  .twick-studio .main-container {
+    flex: 1 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .twick-studio .canvas-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+    background: #0d1117;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Ensure all content fits within viewport */
+  .twick-studio .studio-container {
+    height: calc(100% - 10px) !important;
+    max-height: calc(100vh - 66px) !important;
+  }
+
+  .twick-studio .studio-content {
+    height: calc(100% - 10px) !important;
+  }
 `;
 
 const ManualEditor = () => {
@@ -129,6 +181,10 @@ const ManualEditor = () => {
     videoProps: {
       width: videoSize.width,
       height: videoSize.height,
+    },
+    playerProps: {
+      maxWidth: 1920,
+      maxHeight: 1080,
     },
   };
 
@@ -197,14 +253,14 @@ const ManualEditor = () => {
 
         {/* Main Editor Area */}
         <main className="flex-1 overflow-hidden">
-          <LivePlayerProvider key={`player-${aspectRatio}`}>
+          <LivePlayerProvider>
             <TimelineProvider
               initialData={INITIAL_TIMELINE_DATA}
-              contextId={`vfxb-manual-editor-${aspectRatio}`}
-              key={`timeline-${aspectRatio}`}
+              contextId="vfxb-manual-editor"
+              resolution={{ width: videoSize.width, height: videoSize.height }}
             >
               <div className="h-full twick-studio">
-                <TwickStudio studioConfig={studioConfig} key={`studio-${aspectRatio}`} />
+                <TwickStudioWithResolution studioConfig={studioConfig} videoSize={videoSize} />
               </div>
             </TimelineProvider>
           </LivePlayerProvider>
