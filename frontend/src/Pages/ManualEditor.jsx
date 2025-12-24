@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -108,7 +108,8 @@ const CustomTimelineControls = ({ editorState, onVolumeChange, onMuteToggle, onD
 };
 
 // Inner component that uses timeline and player context for all editor operations
-const EditorWithContext = ({ studioConfig, videoSize, onEditorState, customControls }) => {
+// Uses ref-based state sync to avoid infinite re-render loops
+const EditorWithContext = ({ studioConfig, videoSize, editorStateRef, onVolumeChange, onMuteToggle, onDuplicate, previousVolume }) => {
   const {
     setVideoResolution,
     editor,
@@ -131,26 +132,37 @@ const EditorWithContext = ({ studioConfig, videoSize, onEditorState, customContr
     setVideoResolution({ width: videoSize.width, height: videoSize.height });
   }, [videoSize.width, videoSize.height, setVideoResolution]);
 
-  // Pass all editor state up to parent
-  React.useEffect(() => {
-    onEditorState({
-      canUndo,
-      canRedo,
-      editor,
-      present,
-      playerVolume,
-      setPlayerVolume,
-      playerState,
-      setPlayerState,
-      selectedItem,
-      currentTime
-    });
-  }, [canUndo, canRedo, editor, present, playerVolume, setPlayerVolume, playerState, setPlayerState, selectedItem, currentTime, onEditorState]);
+  // Sync all editor state to parent's ref (no re-renders, just ref updates)
+  // This runs on every render but only updates refs, not state
+  editorStateRef.current = {
+    canUndo,
+    canRedo,
+    editor,
+    present,
+    playerVolume,
+    setPlayerVolume,
+    playerState,
+    setPlayerState,
+    selectedItem,
+    currentTime
+  };
+
+  // Create editorState object for CustomTimelineControls (reactive from context)
+  const editorStateForControls = {
+    playerVolume,
+    selectedItem
+  };
 
   return (
     <>
       <TwickStudio studioConfig={studioConfig} />
-      {customControls}
+      <CustomTimelineControls
+        editorState={editorStateForControls}
+        onVolumeChange={onVolumeChange}
+        onMuteToggle={onMuteToggle}
+        onDuplicate={onDuplicate}
+        previousVolume={previousVolume}
+      />
     </>
   );
 };
@@ -795,8 +807,9 @@ const ManualEditor = () => {
   const storeCurrentVideo = useVideoStore((state) => state.currentVideo);
   const setCurrentVideo = useVideoStore((state) => state.setCurrentVideo);
 
-  // Editor state from timeline and player contexts
-  const [editorState, setEditorState] = useState({
+  // Editor state ref - populated by EditorWithContext via direct ref assignment
+  // Using ref instead of state to avoid infinite re-render loops from context updates
+  const editorStateRef = useRef({
     canUndo: false,
     canRedo: false,
     editor: null,
@@ -820,125 +833,152 @@ const ManualEditor = () => {
     }
   }, [location.state?.uploadedVideo, storeCurrentVideo, setCurrentVideo]);
 
-  // Handle aspect ratio change
+  // Handle aspect ratio change - update all video elements' parent size
   const handleAspectRatioChange = useCallback((ratio) => {
-    setAspectRatio(ratio);
+    let newSize;
     switch (ratio) {
       case "16:9":
-        setVideoSize({ width: 1920, height: 1080 });
+        newSize = { width: 1920, height: 1080 };
         break;
       case "9:16":
-        setVideoSize({ width: 1080, height: 1920 });
+        newSize = { width: 1080, height: 1920 };
         break;
       case "1:1":
-        setVideoSize({ width: 1080, height: 1080 });
+        newSize = { width: 1080, height: 1080 };
         break;
       case "4:5":
-        setVideoSize({ width: 1080, height: 1350 });
+        newSize = { width: 1080, height: 1350 };
         break;
       default:
-        setVideoSize({ width: 1080, height: 1920 });
+        newSize = { width: 1080, height: 1920 };
     }
+
+    // Update existing video elements' parent size in the timeline
+    const editor = editorStateRef.current?.editor;
+    if (editor) {
+      try {
+        const tracks = editor.getTracks();
+        tracks.forEach(track => {
+          const elements = track.getElements();
+          elements.forEach(element => {
+            // Check if element has setParentSize method (video/image elements)
+            if (element.setParentSize && typeof element.setParentSize === 'function') {
+              element.setParentSize(newSize);
+            }
+          });
+        });
+      } catch (error) {
+        console.warn("Error updating element sizes:", error);
+      }
+    }
+
+    setAspectRatio(ratio);
+    setVideoSize(newSize);
   }, []);
 
-  // Handle editor state updates from EditorWithContext
-  const handleEditorStateUpdate = useCallback((state) => {
-    setEditorState(state);
-  }, []);
 
   // Undo action
   const handleUndo = useCallback(() => {
-    if (editorState.canUndo && editorState.editor) {
-      editorState.editor.undo();
+    const state = editorStateRef.current;
+    if (state?.canUndo && state?.editor) {
+      state.editor.undo();
     }
-  }, [editorState]);
+  }, []);
 
   // Redo action
   const handleRedo = useCallback(() => {
-    if (editorState.canRedo && editorState.editor) {
-      editorState.editor.redo();
+    const state = editorStateRef.current;
+    if (state?.canRedo && state?.editor) {
+      state.editor.redo();
     }
-  }, [editorState]);
+  }, []);
 
   // Volume control
   const handleVolumeChange = useCallback((newVolume) => {
-    if (editorState.setPlayerVolume) {
-      editorState.setPlayerVolume(newVolume);
+    const state = editorStateRef.current;
+    if (state?.setPlayerVolume) {
+      state.setPlayerVolume(newVolume);
     }
-  }, [editorState.setPlayerVolume]);
+  }, []);
 
   // Mute toggle
   const [previousVolume, setPreviousVolume] = useState(1);
   const handleMuteToggle = useCallback(() => {
-    if (editorState.setPlayerVolume) {
-      if (editorState.playerVolume > 0) {
-        setPreviousVolume(editorState.playerVolume);
-        editorState.setPlayerVolume(0);
+    const state = editorStateRef.current;
+    if (state?.setPlayerVolume) {
+      if (state.playerVolume > 0) {
+        setPreviousVolume(state.playerVolume);
+        state.setPlayerVolume(0);
       } else {
-        editorState.setPlayerVolume(previousVolume);
+        state.setPlayerVolume(previousVolume);
       }
     }
-  }, [editorState.setPlayerVolume, editorState.playerVolume, previousVolume]);
+  }, [previousVolume]);
 
   // Play/Pause toggle
   const handlePlayPause = useCallback(() => {
-    if (editorState.setPlayerState) {
-      const newState = editorState.playerState === PLAYER_STATE.PLAYING
+    const state = editorStateRef.current;
+    if (state?.setPlayerState) {
+      const newState = state.playerState === PLAYER_STATE.PLAYING
         ? PLAYER_STATE.PAUSED
         : PLAYER_STATE.PLAYING;
-      editorState.setPlayerState(newState);
+      state.setPlayerState(newState);
     }
-  }, [editorState.setPlayerState, editorState.playerState]);
+  }, []);
 
   // Split selected element at current playhead position
   const handleSplit = useCallback(async () => {
-    if (!editorState.editor || !editorState.selectedItem) {
+    const state = editorStateRef.current;
+    if (!state?.editor || !state?.selectedItem) {
       return;
     }
     // Check if selected item is a TrackElement (not a Track)
-    if (editorState.selectedItem.getStart && editorState.selectedItem.getEnd) {
-      const element = editorState.selectedItem;
-      const splitTime = editorState.currentTime;
+    if (state.selectedItem.getStart && state.selectedItem.getEnd) {
+      const element = state.selectedItem;
+      const splitTime = state.currentTime;
 
       // Check if playhead is within the element's time range
       if (splitTime > element.getStart() && splitTime < element.getEnd()) {
-        const result = await editorState.editor.splitElement(element, splitTime);
+        const result = await state.editor.splitElement(element, splitTime);
         if (!result.success) {
           console.warn("Failed to split element");
         }
       }
     }
-  }, [editorState.editor, editorState.selectedItem, editorState.currentTime]);
+  }, []);
 
   // Delete selected element
   const handleDelete = useCallback(() => {
-    if (!editorState.editor || !editorState.selectedItem) {
+    const state = editorStateRef.current;
+    if (!state?.editor || !state?.selectedItem) {
       return;
     }
-    if (editorState.selectedItem.getStart) {
-      editorState.editor.removeElement(editorState.selectedItem);
+    if (state.selectedItem.getStart) {
+      state.editor.removeElement(state.selectedItem);
     }
-  }, [editorState.editor, editorState.selectedItem]);
+  }, []);
 
   // Duplicate selected element
   const handleDuplicate = useCallback(() => {
-    if (!editorState.editor || !editorState.selectedItem) {
+    const state = editorStateRef.current;
+    if (!state?.editor || !state?.selectedItem) {
       return;
     }
-    if (editorState.selectedItem.getStart) {
-      const cloned = editorState.editor.cloneElement(editorState.selectedItem);
+    if (state.selectedItem.getStart) {
+      const cloned = state.editor.cloneElement(state.selectedItem);
       if (cloned) {
         // Offset the cloned element's start time
-        const originalEnd = editorState.selectedItem.getEnd();
+        const originalEnd = state.selectedItem.getEnd();
         cloned.setStart(originalEnd);
-        editorState.editor.addElement(cloned);
+        state.editor.addElement(cloned);
       }
     }
-  }, [editorState.editor, editorState.selectedItem]);
+  }, []);
 
   // Load video from global store into Twick timeline
   const loadVideoToTimeline = useCallback(async (video) => {
-    if (!editorState.editor || !video?.url) {
+    const editor = editorStateRef.current?.editor;
+    if (!editor || !video?.url) {
       console.log("Cannot load video: editor not ready or no video URL");
       return false;
     }
@@ -960,10 +1000,10 @@ const ManualEditor = () => {
       videoElement.setEnd(duration);
 
       // Create a video track
-      const track = editorState.editor.addTrack("Video Track", "video");
+      const track = editor.addTrack("Video Track", "video");
 
       // Add video element to the track
-      const success = await editorState.editor.addElementToTrack(track, videoElement);
+      const success = await editor.addElementToTrack(track, videoElement);
 
       if (success) {
         console.log("Video loaded to timeline successfully");
@@ -981,14 +1021,35 @@ const ManualEditor = () => {
       console.error("Error loading video to timeline:", error);
       return false;
     }
-  }, [editorState.editor, videoSize]);
+  }, [videoSize]);
 
   // Auto-load video from store when editor is ready
+  // Check periodically since ref changes don't trigger re-renders
   useEffect(() => {
-    if (editorState.editor && storeCurrentVideo?.url && !videoLoadedToTimeline) {
-      loadVideoToTimeline(storeCurrentVideo);
-    }
-  }, [editorState.editor, storeCurrentVideo, videoLoadedToTimeline, loadVideoToTimeline]);
+    if (!storeCurrentVideo?.url || videoLoadedToTimeline) return;
+
+    // Check if editor is available in the ref
+    const checkAndLoad = () => {
+      const editor = editorStateRef.current?.editor;
+      if (editor) {
+        loadVideoToTimeline(storeCurrentVideo);
+        return true;
+      }
+      return false;
+    };
+
+    // Try immediately
+    if (checkAndLoad()) return;
+
+    // Retry periodically until editor is ready
+    const interval = setInterval(() => {
+      if (checkAndLoad()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [storeCurrentVideo, videoLoadedToTimeline, loadVideoToTimeline]);
 
   // Switch to AI Editor (video persists via global store)
   const handleSwitchToAIEditor = useCallback(() => {
@@ -1067,13 +1128,14 @@ const ManualEditor = () => {
 
   // Save project as JSON file
   const handleSaveProject = useCallback(async () => {
-    if (!editorState.present) {
+    const projectData = editorStateRef.current?.present;
+    if (!projectData) {
       alert("No project data to save");
       return;
     }
     try {
       await saveAsFile(
-        JSON.stringify(editorState.present, null, 2),
+        JSON.stringify(projectData, null, 2),
         "application/json",
         `${projectName}.json`
       );
@@ -1081,17 +1143,18 @@ const ManualEditor = () => {
       console.error("Error saving project:", error);
       alert("Failed to save project");
     }
-  }, [editorState.present, projectName]);
+  }, [projectName]);
 
   // Load project from JSON file
   const handleLoadProject = useCallback(async () => {
     try {
       const result = await loadFile("application/json");
-      if (result && editorState.editor) {
+      const editor = editorStateRef.current?.editor;
+      if (result && editor) {
         const projectData = JSON.parse(result);
         // Load the project data into the editor
         if (projectData.tracks) {
-          editorState.editor.setTimelineData({
+          editor.setTimelineData({
             tracks: projectData.tracks,
             updatePlayerData: true
           });
@@ -1105,7 +1168,7 @@ const ManualEditor = () => {
       console.error("Error loading project:", error);
       alert("Failed to load project. Make sure the file is a valid VFXB project.");
     }
-  }, [editorState.editor]);
+  }, []);
 
   // Export video (placeholder - server-side rendering required)
   const handleExport = useCallback(() => {
@@ -1174,8 +1237,8 @@ const ManualEditor = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo, handlePlayPause, handleSplit, handleDelete, handleDuplicate, handleSaveProject, handleLoadProject]);
 
-  // Studio configuration
-  const studioConfig = {
+  // Studio configuration - memoized to prevent unnecessary re-renders
+  const studioConfig = useMemo(() => ({
     videoProps: {
       width: videoSize.width,
       height: videoSize.height,
@@ -1184,7 +1247,7 @@ const ManualEditor = () => {
       maxWidth: 1920,
       maxHeight: 1080,
     },
-  };
+  }), [videoSize.width, videoSize.height]);
 
   return (
     <>
@@ -1355,16 +1418,11 @@ const ManualEditor = () => {
                 <EditorWithContext
                   studioConfig={studioConfig}
                   videoSize={videoSize}
-                  onEditorState={handleEditorStateUpdate}
-                  customControls={
-                    <CustomTimelineControls
-                      editorState={editorState}
-                      onVolumeChange={handleVolumeChange}
-                      onMuteToggle={handleMuteToggle}
-                      onDuplicate={handleDuplicate}
-                      previousVolume={previousVolume}
-                    />
-                  }
+                  editorStateRef={editorStateRef}
+                  onVolumeChange={handleVolumeChange}
+                  onMuteToggle={handleMuteToggle}
+                  onDuplicate={handleDuplicate}
+                  previousVolume={previousVolume}
                 />
               </div>
             </TimelineProvider>
