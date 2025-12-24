@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Play,
   Pause,
@@ -29,6 +29,7 @@ import {
   RotateCcw,
   Save,
   Settings,
+  Pencil,
 } from "lucide-react";
 import EnhancedVideoPlayer from "../components/video/EnhancedVideoPlayer";
 import EffectsLibrary from "../components/effects/EffectsLibrary";
@@ -250,6 +251,7 @@ const AIEditor = () => {
   const [activeTab, setActiveTab] = useState("assistant");
   const chatScrollRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const [suppressHotkeys, setSuppressHotkeys] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const videoRef = useRef(null);
@@ -3447,6 +3449,11 @@ Your video has been upgraded with the following improvements:
     return suggestions;
   };
 
+  // Switch to Manual Editor (video persists via global store)
+  const handleSwitchToManualEditor = useCallback(() => {
+    navigate("/manual-editor");
+  }, [navigate]);
+
   const saveProject = async () => {
     if (!uploadedVideo) {
       alert("No video to save!");
@@ -3898,6 +3905,14 @@ Your video has been upgraded with the following improvements:
           >
             {/* Left: Undo + Settings */}
             <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
+              <button
+                onClick={handleSwitchToManualEditor}
+                className="bg-card hover:bg-muted text-foreground px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 shadow-elevation-1 hover:shadow-elevation-2 border border-border w-full sm:w-auto"
+                title="Switch to Manual Editor"
+              >
+                <Pencil className="w-4 h-4 mr-2 inline-block text-purple-400" />
+                Manual Editor
+              </button>
               <button className="bg-card hover:bg-muted text-foreground px-3 md:px-4 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 shadow-elevation-1 hover:shadow-elevation-2 border border-border w-full sm:w-auto">
                 <RotateCcw className="w-4 h-4 mr-2 inline-block" />
                 Undo

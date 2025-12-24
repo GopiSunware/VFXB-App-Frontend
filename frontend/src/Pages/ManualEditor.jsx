@@ -1,38 +1,114 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Download,
   Share2,
   ChevronDown,
-  Undo2,
-  Redo2,
   Settings,
   HelpCircle,
   Link2,
   Save,
   FolderOpen,
-  Home,
   Volume2,
   VolumeX,
-  Play,
-  Pause,
   Pencil,
   Check,
   X,
-  Scissors,
-  Trash2,
   Copy,
+  Wand2,
+  Upload,
 } from "lucide-react";
 
 // Twick/VFXB Editor imports
 import { LivePlayerProvider, useLivePlayerContext, PLAYER_STATE } from "@twick/live-player";
 import { TwickStudio } from "@twick/studio";
-import { TimelineProvider, useTimelineContext, INITIAL_TIMELINE_DATA } from "@twick/timeline";
+import { TimelineProvider, useTimelineContext, INITIAL_TIMELINE_DATA, VideoElement } from "@twick/timeline";
 import { saveAsFile, loadFile } from "@twick/media-utils";
 import "@twick/studio/dist/studio.css";
 
+// Global video store for sharing between editors
+import useVideoStore from "../context/videoStore";
+
+// Custom controls component that injects into Twick's timeline controls bar via Portal
+const CustomTimelineControls = ({ editorState, onVolumeChange, onMuteToggle, onDuplicate, previousVolume }) => {
+  const [portalTarget, setPortalTarget] = useState(null);
+
+  // Find and attach to Twick's edit-controls container
+  useEffect(() => {
+    const findTarget = () => {
+      // Find the edit-controls container where Delete, Split, Undo, Redo are
+      const editControls = document.querySelector('.edit-controls');
+      if (editControls && !portalTarget) {
+        setPortalTarget(editControls);
+      }
+    };
+
+    // Try immediately
+    findTarget();
+
+    // Also observe DOM changes in case Twick renders later
+    const observer = new MutationObserver(findTarget);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, [portalTarget]);
+
+  const controlsContent = (
+    <>
+      {/* Divider before our controls */}
+      <div className="custom-control-divider"></div>
+
+      {/* Duplicate button - right after undo/redo */}
+      <button
+        onClick={onDuplicate}
+        disabled={!editorState.selectedItem}
+        className={`custom-control-btn ${!editorState.selectedItem ? 'disabled' : ''}`}
+        title="Duplicate (Ctrl+D)"
+      >
+        <Copy className="w-4 h-4" />
+      </button>
+
+      {/* Divider */}
+      <div className="custom-control-divider"></div>
+
+      {/* Volume controls */}
+      <div className="custom-volume-controls">
+        <button
+          onClick={onMuteToggle}
+          className="custom-control-btn"
+          title={editorState.playerVolume > 0 ? "Mute" : "Unmute"}
+        >
+          {editorState.playerVolume > 0 ? (
+            <Volume2 className="w-4 h-4" />
+          ) : (
+            <VolumeX className="w-4 h-4" />
+          )}
+        </button>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={editorState.playerVolume}
+          onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+          className="custom-volume-slider"
+          title={`Volume: ${Math.round(editorState.playerVolume * 100)}%`}
+        />
+      </div>
+    </>
+  );
+
+  // Render via portal into Twick's controls, or null if target not found yet
+  if (portalTarget) {
+    return createPortal(controlsContent, portalTarget);
+  }
+
+  return null;
+};
+
 // Inner component that uses timeline and player context for all editor operations
-const EditorWithContext = ({ studioConfig, videoSize, onEditorState }) => {
+const EditorWithContext = ({ studioConfig, videoSize, onEditorState, customControls }) => {
   const {
     setVideoResolution,
     editor,
@@ -71,7 +147,12 @@ const EditorWithContext = ({ studioConfig, videoSize, onEditorState }) => {
     });
   }, [canUndo, canRedo, editor, present, playerVolume, setPlayerVolume, playerState, setPlayerState, selectedItem, currentTime, onEditorState]);
 
-  return <TwickStudio studioConfig={studioConfig} />;
+  return (
+    <>
+      <TwickStudio studioConfig={studioConfig} />
+      {customControls}
+    </>
+  );
 };
 
 /*
@@ -584,6 +665,118 @@ const customStyles = `
     border-color: var(--color-bg-tertiary) !important;
     border-top-color: var(--color-primary) !important;
   }
+
+  /* ===== Custom Controls Injected via Portal into Twick's edit-controls ===== */
+
+  /* Divider between Twick controls and our custom controls */
+  .custom-control-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--color-border-medium);
+    margin: 0 8px;
+    flex-shrink: 0;
+  }
+
+  /* Volume controls container */
+  .custom-volume-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Custom control buttons matching Twick's style */
+  .custom-control-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-standard);
+  }
+
+  .custom-control-btn:hover {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+  }
+
+  .custom-control-btn.disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+  }
+
+  .custom-control-btn.disabled:hover {
+    background: transparent;
+    color: var(--color-text-muted);
+  }
+
+  /* Volume slider - wider for finer control */
+  input.custom-volume-slider[type="range"] {
+    width: 100px !important;
+    height: 14px !important;
+    background: linear-gradient(to right, #7C3AED 0%, #7C3AED 100%, #3A3B42 100%, #3A3B42 100%) !important;
+    background-size: 100% 4px !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    cursor: pointer !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    border: none !important;
+    border-radius: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    vertical-align: middle !important;
+  }
+
+  input.custom-volume-slider[type="range"]::-webkit-slider-runnable-track {
+    height: 4px !important;
+    background: #3A3B42 !important;
+    border-radius: 2px !important;
+  }
+
+  input.custom-volume-slider[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 14px !important;
+    height: 14px !important;
+    background: #FFFFFF !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    border: 2px solid #7C3AED !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+    margin-top: -5px !important;
+  }
+
+  input.custom-volume-slider[type="range"]::-webkit-slider-thumb:hover {
+    background: #8B5CF6 !important;
+  }
+
+  input.custom-volume-slider[type="range"]::-moz-range-track {
+    height: 4px !important;
+    background: #3A3B42 !important;
+    border-radius: 2px !important;
+  }
+
+  input.custom-volume-slider[type="range"]::-moz-range-thumb {
+    width: 14px !important;
+    height: 14px !important;
+    background: #FFFFFF !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    border: 2px solid #7C3AED !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  input.custom-volume-slider[type="range"]::-moz-range-progress {
+    height: 4px !important;
+    background: #7C3AED !important;
+    border-radius: 2px !important;
+  }
 `;
 
 const ManualEditor = () => {
@@ -595,6 +788,11 @@ const ManualEditor = () => {
   const [projectName, setProjectName] = useState("Video Project");
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempProjectName, setTempProjectName] = useState("Video Project");
+  const [videoLoadedToTimeline, setVideoLoadedToTimeline] = useState(false);
+
+  // Global video store - shared between AI Editor and Manual Editor
+  const storeCurrentVideo = useVideoStore((state) => state.currentVideo);
+  const setCurrentVideo = useVideoStore((state) => state.setCurrentVideo);
 
   // Editor state from timeline and player contexts
   const [editorState, setEditorState] = useState({
@@ -610,9 +808,16 @@ const ManualEditor = () => {
     currentTime: 0
   });
 
-  // Get uploaded video from navigation state if available
-  const uploadedVideo = location.state?.uploadedVideo;
+  // Get uploaded video from navigation state OR global store (unified system)
+  const uploadedVideo = location.state?.uploadedVideo || storeCurrentVideo;
   const projectData = location.state?.projectData;
+
+  // If video came from navigation state, also store it in global store for sync
+  useEffect(() => {
+    if (location.state?.uploadedVideo && !storeCurrentVideo) {
+      setCurrentVideo(location.state.uploadedVideo);
+    }
+  }, [location.state?.uploadedVideo, storeCurrentVideo, setCurrentVideo]);
 
   // Handle aspect ratio change
   const handleAspectRatioChange = useCallback((ratio) => {
@@ -730,6 +935,65 @@ const ManualEditor = () => {
     }
   }, [editorState.editor, editorState.selectedItem]);
 
+  // Load video from global store into Twick timeline
+  const loadVideoToTimeline = useCallback(async (video) => {
+    if (!editorState.editor || !video?.url) {
+      console.log("Cannot load video: editor not ready or no video URL");
+      return false;
+    }
+
+    try {
+      console.log("Loading video to timeline:", video.url);
+
+      // Create a new video element
+      const videoElement = new VideoElement(video.url, videoSize);
+
+      // Update video metadata (duration, dimensions)
+      await videoElement.updateVideoMeta();
+
+      // Set start time
+      videoElement.setStart(0);
+
+      // Set end time based on video duration
+      const duration = videoElement.getMediaDuration();
+      videoElement.setEnd(duration);
+
+      // Create a video track
+      const track = editorState.editor.addTrack("Video Track", "video");
+
+      // Add video element to the track
+      const success = await editorState.editor.addElementToTrack(track, videoElement);
+
+      if (success) {
+        console.log("Video loaded to timeline successfully");
+        // Update project name from video
+        if (video.name) {
+          setProjectName(video.name.replace(/\.[^/.]+$/, "")); // Remove extension
+        }
+        setVideoLoadedToTimeline(true);
+        return true;
+      } else {
+        console.error("Failed to add video element to track");
+        return false;
+      }
+    } catch (error) {
+      console.error("Error loading video to timeline:", error);
+      return false;
+    }
+  }, [editorState.editor, videoSize]);
+
+  // Auto-load video from store when editor is ready
+  useEffect(() => {
+    if (editorState.editor && storeCurrentVideo?.url && !videoLoadedToTimeline) {
+      loadVideoToTimeline(storeCurrentVideo);
+    }
+  }, [editorState.editor, storeCurrentVideo, videoLoadedToTimeline, loadVideoToTimeline]);
+
+  // Switch to AI Editor (video persists via global store)
+  const handleSwitchToAIEditor = useCallback(() => {
+    navigate("/ai-editor");
+  }, [navigate]);
+
   // Project name editing
   const startEditingName = useCallback(() => {
     setTempProjectName(projectName);
@@ -774,6 +1038,30 @@ const ManualEditor = () => {
     }
   }, [editorState.present, projectName]);
 
+  // Load project from JSON file
+  const handleLoadProject = useCallback(async () => {
+    try {
+      const result = await loadFile("application/json");
+      if (result && editorState.editor) {
+        const projectData = JSON.parse(result);
+        // Load the project data into the editor
+        if (projectData.tracks) {
+          editorState.editor.setTimelineData({
+            tracks: projectData.tracks,
+            updatePlayerData: true
+          });
+          // Extract project name from loaded data or keep current
+          if (projectData.name) {
+            setProjectName(projectData.name);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error loading project:", error);
+      alert("Failed to load project. Make sure the file is a valid VFXB project.");
+    }
+  }, [editorState.editor]);
+
   // Export video (placeholder - server-side rendering required)
   const handleExport = useCallback(() => {
     alert(
@@ -812,6 +1100,11 @@ const ManualEditor = () => {
           e.preventDefault();
           handleSaveProject();
         }
+        // Open: Ctrl+O
+        if (e.key === 'o') {
+          e.preventDefault();
+          handleLoadProject();
+        }
       }
 
       // Space: Play/Pause toggle
@@ -834,7 +1127,7 @@ const ManualEditor = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, handlePlayPause, handleSplit, handleDelete, handleDuplicate, handleSaveProject]);
+  }, [handleUndo, handleRedo, handlePlayPause, handleSplit, handleDelete, handleDuplicate, handleSaveProject, handleLoadProject]);
 
   // Studio configuration
   const studioConfig = {
@@ -906,138 +1199,30 @@ const ManualEditor = () => {
 
             {/* Aspect Ratio Selector - as Size dropdown */}
             <div className="flex items-center border-l border-[#2E2F35] pl-4">
-              <div className="relative">
-                <select
-                  value={aspectRatio}
-                  onChange={(e) => handleAspectRatioChange(e.target.value)}
-                  className="appearance-none bg-transparent text-[#FFFFFF] text-sm px-2 py-1 pr-6 hover:bg-[#2C2D33] rounded-md cursor-pointer transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-opacity-30"
-                >
-                  <option value="9:16" className="bg-[#1A1B1E]">9:16 (Vertical)</option>
-                  <option value="16:9" className="bg-[#1A1B1E]">16:9 (Landscape)</option>
-                  <option value="1:1" className="bg-[#1A1B1E]">1:1 (Square)</option>
-                  <option value="4:5" className="bg-[#1A1B1E]">4:5 (Portrait)</option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-[#A0A1A7] absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <select
+                value={aspectRatio}
+                onChange={(e) => handleAspectRatioChange(e.target.value)}
+                className="bg-transparent text-[#FFFFFF] text-sm px-2 py-1 hover:bg-[#2C2D33] rounded-md cursor-pointer transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-opacity-30"
+              >
+                <option value="9:16" className="bg-[#1A1B1E]">9:16 (Vertical)</option>
+                <option value="16:9" className="bg-[#1A1B1E]">16:9 (Landscape)</option>
+                <option value="1:1" className="bg-[#1A1B1E]">1:1 (Square)</option>
+                <option value="4:5" className="bg-[#1A1B1E]">4:5 (Portrait)</option>
+              </select>
             </div>
 
-            {/* Divider */}
-            <div className="w-px h-6 bg-[#2E2F35]"></div>
-
-            {/* Undo/Redo buttons */}
-            <div className="flex items-center gap-1">
+            {/* Switch to AI Editor button */}
+            <div className="flex items-center border-l border-[#2E2F35] pl-4">
               <button
-                onClick={handleUndo}
-                disabled={!editorState.canUndo}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
-                  editorState.canUndo
-                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
-                    : "text-[#4A4B50] cursor-not-allowed"
-                }`}
-                title="Undo (Ctrl+Z)"
+                onClick={handleSwitchToAIEditor}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-[#FFFFFF] bg-[#2C2D33] hover:bg-[#3A3B42] rounded-md transition-all duration-150"
+                title="Switch to AI Editor"
               >
-                <Undo2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={!editorState.canRedo}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
-                  editorState.canRedo
-                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
-                    : "text-[#4A4B50] cursor-not-allowed"
-                }`}
-                title="Redo (Ctrl+Y)"
-              >
-                <Redo2 className="w-4 h-4" />
+                <Wand2 className="w-4 h-4 text-[#8B5CF6]" />
+                <span>AI Editor</span>
               </button>
             </div>
 
-            {/* Divider */}
-            <div className="w-px h-6 bg-[#2E2F35]"></div>
-
-            {/* Play/Pause and Volume controls */}
-            <div className="flex items-center gap-2">
-              {/* Play/Pause button */}
-              <button
-                onClick={handlePlayPause}
-                className="w-8 h-8 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150"
-                title={editorState.playerState === PLAYER_STATE.PLAYING ? "Pause (Space)" : "Play (Space)"}
-              >
-                {editorState.playerState === PLAYER_STATE.PLAYING ? (
-                  <Pause className="w-4 h-4" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-              </button>
-
-              {/* Volume controls */}
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleMuteToggle}
-                  className="w-8 h-8 flex items-center justify-center text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33] rounded-md transition-all duration-150"
-                  title={editorState.playerVolume > 0 ? "Mute" : "Unmute"}
-                >
-                  {editorState.playerVolume > 0 ? (
-                    <Volume2 className="w-4 h-4" />
-                  ) : (
-                    <VolumeX className="w-4 h-4" />
-                  )}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={editorState.playerVolume}
-                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                  className="w-16 h-1 bg-[#3A3B42] rounded-full appearance-none cursor-pointer accent-[#7C3AED]"
-                  title={`Volume: ${Math.round(editorState.playerVolume * 100)}%`}
-                />
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="w-px h-6 bg-[#2E2F35]"></div>
-
-            {/* Edit controls (require selected element) */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handleSplit}
-                disabled={!editorState.selectedItem}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
-                  editorState.selectedItem
-                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
-                    : "text-[#4A4B50] cursor-not-allowed"
-                }`}
-                title="Split at playhead (S)"
-              >
-                <Scissors className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleDuplicate}
-                disabled={!editorState.selectedItem}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
-                  editorState.selectedItem
-                    ? "text-[#A0A1A7] hover:text-[#FFFFFF] hover:bg-[#2C2D33]"
-                    : "text-[#4A4B50] cursor-not-allowed"
-                }`}
-                title="Duplicate (Ctrl+D)"
-              >
-                <Copy className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={!editorState.selectedItem}
-                className={`w-8 h-8 flex items-center justify-center rounded-md transition-all duration-150 ${
-                  editorState.selectedItem
-                    ? "text-[#A0A1A7] hover:text-[#EF4444] hover:bg-[#2C2D33]"
-                    : "text-[#4A4B50] cursor-not-allowed"
-                }`}
-                title="Delete (Del)"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
           </div>
 
           {/* Right side - Actions */}
@@ -1055,6 +1240,16 @@ const ManualEditor = () => {
 
             {/* Divider */}
             <div className="w-px h-6 bg-[#2E2F35]"></div>
+
+            {/* Load button */}
+            <button
+              onClick={handleLoadProject}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#FFFFFF] bg-transparent hover:bg-[#2C2D33] rounded-md transition-all duration-200"
+              title="Load Project (Open)"
+            >
+              <FolderOpen className="w-4 h-4" />
+              <span>Open</span>
+            </button>
 
             {/* Save button */}
             <button
@@ -1092,11 +1287,20 @@ const ManualEditor = () => {
               contextId="vfxb-manual-editor"
               resolution={{ width: videoSize.width, height: videoSize.height }}
             >
-              <div className="h-full twick-studio">
+              <div className="h-full twick-studio relative">
                 <EditorWithContext
                   studioConfig={studioConfig}
                   videoSize={videoSize}
                   onEditorState={handleEditorStateUpdate}
+                  customControls={
+                    <CustomTimelineControls
+                      editorState={editorState}
+                      onVolumeChange={handleVolumeChange}
+                      onMuteToggle={handleMuteToggle}
+                      onDuplicate={handleDuplicate}
+                      previousVolume={previousVolume}
+                    />
+                  }
                 />
               </div>
             </TimelineProvider>
