@@ -30,105 +30,20 @@ import "@twick/studio/dist/studio.css";
 // Global video store for sharing between editors
 import useVideoStore from "../context/videoStore";
 
-// Aspect Ratio Crop Preview Overlay - shows crop bounds like Clipchamp
-// Uses Portal to render inside the canvas container specifically
-const AspectRatioCropOverlay = ({ aspectRatio, isVisible }) => {
-  const [portalTarget, setPortalTarget] = useState(null);
-
-  // Find the canvas container to attach the overlay
-  // Use ref to track current target for comparison without stale closure issues
-  const portalTargetRef = useRef(null);
-
-  useEffect(() => {
-    const findCanvasContainer = () => {
-      // Target .canvas-wrapper which contains the actual video preview
-      // Order matters - prioritize containers that are in the visible viewport
-      const selectors = [
-        '.canvas-wrapper',
-        '.canvas-container',
-        '.twick-editor-view-section',
-        '.live-player-container'
-      ];
-
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          // Verify it's in the visible viewport area (top should be < 400)
-          const rect = element.getBoundingClientRect();
-          if (rect.top < 400 && rect.height > 50) {
-            // Only update if element changed or previous target was detached
-            const currentTarget = portalTargetRef.current;
-            const isCurrentAttached = currentTarget && document.body.contains(currentTarget);
-            if (element !== currentTarget || !isCurrentAttached) {
-              portalTargetRef.current = element;
-              setPortalTarget(element);
-            }
-            return;
-          }
-        }
-      }
-    };
-
-    findCanvasContainer();
-
-    // Observe DOM changes in case Twick renders later or container is replaced
-    // Scope to editor root for better performance instead of entire document.body
-    const editorRoot = document.querySelector('.twick-studio') || document.querySelector('.manual-editor-fullscreen');
-    if (editorRoot) {
-      const observer = new MutationObserver(findCanvasContainer);
-      observer.observe(editorRoot, { childList: true, subtree: true });
-      return () => observer.disconnect();
-    }
-  }, []); // Empty dependency - observer callback handles updates via ref
-
-  // Calculate the overlay masks based on aspect ratio
-  const getOverlayStyle = () => {
-    // Calculate width percentage for crop overlay on a 16:9 (1920x1080) canvas
-    // Formula: width% = 100 * (height * aspectWidth / aspectHeight) / canvasWidth
-    // With height=1080 and canvasWidth=1920
-    const ratios = {
-      "16:9": { width: 100, height: 100 }, // Full canvas, no crop
-      "9:16": { width: 31.64, height: 100 }, // Vertical: 1080*(9/16)/1920 ≈ 31.64%
-      "1:1": { width: 56.25, height: 100 }, // Square: 1080/1920 = 56.25%
-      "4:5": { width: 45, height: 100 }, // Portrait: 1080*(4/5)/1920 = 45%
-    };
-    return ratios[aspectRatio] || ratios["16:9"];
-  };
-
-  const overlay = getOverlayStyle();
-  const isFullCanvas = aspectRatio === "16:9";
-
-  if (!isVisible || isFullCanvas) return null;
-
-  const overlayContent = (
-    <div className="aspect-ratio-crop-overlay">
-      {/* Left dark area */}
-      <div
-        className="crop-overlay-mask crop-overlay-left"
-        style={{ width: `${(100 - overlay.width) / 2}%` }}
-      />
-      {/* Right dark area */}
-      <div
-        className="crop-overlay-mask crop-overlay-right"
-        style={{ width: `${(100 - overlay.width) / 2}%` }}
-      />
-      {/* Crop boundary indicator */}
-      <div
-        className="crop-boundary"
-        style={{
-          left: `${(100 - overlay.width) / 2}%`,
-          width: `${overlay.width}%`
-        }}
-      />
-    </div>
-  );
-
-  // Render via portal into the canvas container
-  if (portalTarget) {
-    return createPortal(overlayContent, portalTarget);
+// Helper function to get canvas dimensions for aspect ratio
+const getCanvasSizeForAspectRatio = (ratio) => {
+  switch (ratio) {
+    case "16:9":
+      return { width: 1920, height: 1080 };
+    case "9:16":
+      return { width: 1080, height: 1920 };
+    case "1:1":
+      return { width: 1080, height: 1080 };
+    case "4:5":
+      return { width: 1080, height: 1350 };
+    default:
+      return { width: 1920, height: 1080 };
   }
-
-  return null;
 };
 
 // Custom controls component that injects into Twick's timeline controls bar via Portal
@@ -901,68 +816,16 @@ const customStyles = `
     background: #7C3AED !important;
     border-radius: 2px !important;
   }
-
-  /* ===== Aspect Ratio Crop Preview Overlay (Clipchamp-style) ===== */
-  .aspect-ratio-crop-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-    z-index: 100;
-    display: flex;
-    overflow: hidden;
-  }
-
-  .crop-overlay-mask {
-    background: rgba(0, 0, 0, 0.7);
-    height: 100%;
-    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .crop-overlay-left {
-    position: absolute;
-    left: 0;
-    top: 0;
-  }
-
-  .crop-overlay-right {
-    position: absolute;
-    right: 0;
-    top: 0;
-  }
-
-  .crop-boundary {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    border-left: 2px solid rgba(124, 58, 237, 0.8);
-    border-right: 2px solid rgba(124, 58, 237, 0.8);
-    box-sizing: border-box;
-    transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    pointer-events: none;
-    box-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
-  }
-
-  /* Ensure canvas containers are positioned for overlay */
-  .twick-studio .canvas-container,
-  .twick-studio .canvas-wrapper,
-  .twick-studio .twick-editor-canvas-container,
-  .twick-studio .live-player-container {
-    position: relative !important;
-  }
 `;
 
 const ManualEditor = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  // Canvas size is FIXED at 16:9 - this prevents TwickStudio from re-initializing
-  // The aspectRatio state is only used for the crop preview overlay
-  const canvasSize = useMemo(() => ({ width: 1920, height: 1080 }), []); // Fixed 16:9 canvas
-  const [aspectRatio, setAspectRatio] = useState("16:9"); // Default to 16:9 (no crop)
-  const [showCropOverlay, setShowCropOverlay] = useState(true); // Show crop preview
+  // Aspect ratio controls actual canvas size for video playback
+  const [aspectRatio, setAspectRatio] = useState("16:9");
+  // Canvas size is derived from aspect ratio
+  const canvasSize = useMemo(() => getCanvasSizeForAspectRatio(aspectRatio), [aspectRatio]);
   const [projectName, setProjectName] = useState("Video Project");
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempProjectName, setTempProjectName] = useState("Video Project");
@@ -999,13 +862,30 @@ const ManualEditor = () => {
     }
   }, [location.state?.uploadedVideo, storeCurrentVideo, setCurrentVideo]);
 
-  // Handle aspect ratio change - only updates the crop preview overlay
-  // The canvas stays at fixed 16:9, the overlay shows the selected crop bounds
-  // Actual cropping happens during export, not during editing
+  // Handle aspect ratio change - updates actual canvas size and video elements
   const handleAspectRatioChange = useCallback((ratio) => {
+    const newSize = getCanvasSizeForAspectRatio(ratio);
+
+    // Update existing video elements' parent size in the timeline
+    const editor = editorStateRef.current?.editor;
+    if (editor) {
+      try {
+        const tracks = editor.getTracks();
+        tracks.forEach(track => {
+          const elements = track.getElements();
+          elements.forEach(element => {
+            // Check if element has setParentSize method (video/image elements)
+            if (element.setParentSize && typeof element.setParentSize === 'function') {
+              element.setParentSize(newSize);
+            }
+          });
+        });
+      } catch (error) {
+        console.warn("Error updating element sizes:", error);
+      }
+    }
+
     setAspectRatio(ratio);
-    // The crop overlay will automatically update based on the new aspectRatio
-    // No need to change canvas size or element sizes - that causes black screen/glitches
   }, []);
 
 
@@ -1556,11 +1436,6 @@ const ManualEditor = () => {
                   onMuteToggle={handleMuteToggle}
                   onDuplicate={handleDuplicate}
                   previousVolume={previousVolume}
-                />
-                {/* Aspect ratio crop preview overlay - shows crop bounds */}
-                <AspectRatioCropOverlay
-                  aspectRatio={aspectRatio}
-                  isVisible={showCropOverlay && aspectRatio !== "16:9"}
                 />
               </div>
             </TimelineProvider>
