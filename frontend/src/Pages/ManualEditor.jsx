@@ -136,7 +136,7 @@ const CustomTimelineControls = ({ editorState, onVolumeChange, onMuteToggle, onD
 
 // Inner component that uses timeline and player context for all editor operations
 // Uses ref-based state sync to avoid infinite re-render loops
-const EditorWithContext = ({ studioConfig, canvasSize, editorStateRef, onVolumeChange, onMuteToggle, onDuplicate, previousVolume }) => {
+const EditorWithContext = ({ studioConfig, canvasSize, editorStateRef, onVolumeChange, onMuteToggle, onDuplicate, previousVolume, restorePlaybackRef }) => {
   const {
     setVideoResolution,
     editor,
@@ -158,6 +158,81 @@ const EditorWithContext = ({ studioConfig, canvasSize, editorStateRef, onVolumeC
   React.useEffect(() => {
     setVideoResolution({ width: canvasSize.width, height: canvasSize.height });
   }, [canvasSize.width, canvasSize.height, setVideoResolution]);
+
+  // Clear default "Twick SDK" element on first mount - timeline should start empty
+  const hasCleared = React.useRef(false);
+  React.useEffect(() => {
+    if (editor && present && !hasCleared.current) {
+      // Check if there are default tracks to clear (timeline or tracks array)
+      const tracks = present?.timeline || present?.tracks || [];
+      if (tracks.length > 0) {
+        hasCleared.current = true;
+        // Small delay to ensure editor is fully initialized
+        const timer = setTimeout(() => {
+          try {
+            console.log("Clearing default tracks:", tracks);
+            tracks.forEach(trackData => {
+              if (trackData.id) {
+                editor.removeTrackById(trackData.id);
+              }
+            });
+            // Also try to reset the timeline data directly if available
+            if (editor.setTimelineData) {
+              editor.setTimelineData({ tracks: [], updatePlayerData: true });
+            }
+          } catch (error) {
+            console.warn("Error clearing default timeline:", error);
+          }
+        }, 200);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [editor, present]);
+
+  // Track previous canvas size to detect aspect ratio changes
+  const prevCanvasSizeRef = React.useRef({ width: canvasSize.width, height: canvasSize.height });
+
+  // Handle aspect ratio change: update video elements and restore playback
+  React.useEffect(() => {
+    const prevSize = prevCanvasSizeRef.current;
+    const sizeChanged = prevSize.width !== canvasSize.width || prevSize.height !== canvasSize.height;
+
+    if (sizeChanged && editor) {
+      // Resolution changed - update video elements through the present timeline data
+      const timer = setTimeout(() => {
+        try {
+          // Access tracks through present.timeline (the actual data structure)
+          const tracks = present?.timeline || [];
+          tracks.forEach(trackData => {
+            if (trackData.id) {
+              const track = editor.getTrackById(trackData.id);
+              if (track) {
+                const elements = track.getElements ? track.getElements() : [];
+                elements.forEach(element => {
+                  if (element.setParentSize && typeof element.setParentSize === 'function') {
+                    element.setParentSize({ width: canvasSize.width, height: canvasSize.height });
+                  }
+                });
+              }
+            }
+          });
+        } catch (error) {
+          console.warn("Error updating element sizes after resolution change:", error);
+        }
+
+        // Restore playback if it was playing before the change
+        if (restorePlaybackRef?.current && setPlayerState) {
+          setPlayerState(PLAYER_STATE.PLAYING);
+          restorePlaybackRef.current = false;
+        }
+      }, 200);
+
+      // Update prev size ref
+      prevCanvasSizeRef.current = { width: canvasSize.width, height: canvasSize.height };
+
+      return () => clearTimeout(timer);
+    }
+  }, [canvasSize.width, canvasSize.height, editor, present, setPlayerState, restorePlaybackRef]);
 
   // Sync all editor state to parent's ref (no re-renders, just ref updates)
   // This runs on every render but only updates refs, not state
@@ -280,9 +355,13 @@ const customStyles = `
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   }
 
-  /* ===== Hide Twick branding ===== */
-  .twick-logo, .twick-brand, [class*="twick-watermark"] {
+  /* ===== Hide Twick branding and watermark ===== */
+  .twick-logo, .twick-brand, [class*="twick-watermark"],
+  [class*="watermark"], [class*="Watermark"],
+  .twick-studio [class*="sdk"], .twick-studio [class*="SDK"] {
     display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
   }
 
   /* ===== Scrollbar Styling ===== */
@@ -538,6 +617,11 @@ const customStyles = `
     min-width: 100px !important;
   }
 
+  /* Fix: Match seek track empty-space width to track header for proper playhead alignment */
+  .twick-studio .twick-seek-track-empty-space {
+    min-width: 100px !important;
+  }
+
   /* Track elements (clips on timeline) */
   .twick-studio .twick-track-element {
     background: var(--color-border-medium) !important;
@@ -705,6 +789,35 @@ const customStyles = `
     border-top-color: var(--color-primary) !important;
   }
 
+  /* ===== Canvas Interaction - Enable element selection and dragging ===== */
+  .twick-studio .canvas-container canvas,
+  .twick-studio canvas.lower-canvas,
+  .twick-studio canvas.upper-canvas {
+    cursor: default !important;
+  }
+
+  /* Fabric.js selection controls - make them visible and styled */
+  .twick-studio .canvas-container .canvas-controls {
+    pointer-events: auto !important;
+  }
+
+  /* Ensure canvas elements are interactive during editing */
+  .twick-studio .canvas-wrapper,
+  .twick-studio .twick-editor-canvas-container {
+    pointer-events: auto !important;
+  }
+
+  /* Style for selected elements on canvas */
+  .twick-studio canvas.upper-canvas {
+    pointer-events: auto !important;
+  }
+
+  /* Canvas element selection border */
+  .fabric-selected {
+    border: 2px solid var(--color-primary) !important;
+    box-shadow: 0 0 10px rgba(124, 58, 237, 0.5) !important;
+  }
+
   /* ===== Custom Controls Injected via Portal into Twick's edit-controls ===== */
 
   /* Divider between Twick controls and our custom controls */
@@ -831,6 +944,8 @@ const ManualEditor = () => {
   const [tempProjectName, setTempProjectName] = useState("Video Project");
   const [videoLoadedToTimeline, setVideoLoadedToTimeline] = useState(false);
   const videoFileInputRef = useRef(null);
+  // Ref to signal that playback should be restored after aspect ratio change
+  const restorePlaybackRef = useRef(false);
 
   // Global video store - shared between AI Editor and Manual Editor
   const storeCurrentVideo = useVideoStore((state) => state.currentVideo);
@@ -862,27 +977,15 @@ const ManualEditor = () => {
     }
   }, [location.state?.uploadedVideo, storeCurrentVideo, setCurrentVideo]);
 
-  // Handle aspect ratio change - updates actual canvas size and video elements
+  // Handle aspect ratio change - updates actual canvas size
+  // Video element updates are handled in EditorWithContext effect after resolution propagates
   const handleAspectRatioChange = useCallback((ratio) => {
-    const newSize = getCanvasSizeForAspectRatio(ratio);
+    const state = editorStateRef.current;
 
-    // Update existing video elements' parent size in the timeline
-    const editor = editorStateRef.current?.editor;
-    if (editor) {
-      try {
-        const tracks = editor.getTracks();
-        tracks.forEach(track => {
-          const elements = track.getElements();
-          elements.forEach(element => {
-            // Check if element has setParentSize method (video/image elements)
-            if (element.setParentSize && typeof element.setParentSize === 'function') {
-              element.setParentSize(newSize);
-            }
-          });
-        });
-      } catch (error) {
-        console.warn("Error updating element sizes:", error);
-      }
+    // Save current playback state - signal to restore after change completes
+    const wasPlaying = state?.playerState === PLAYER_STATE.PLAYING;
+    if (wasPlaying) {
+      restorePlaybackRef.current = true;
     }
 
     setAspectRatio(ratio);
@@ -1249,18 +1352,25 @@ const ManualEditor = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo, handlePlayPause, handleSplit, handleDelete, handleDuplicate, handleSaveProject, handleLoadProject]);
 
-  // Studio configuration - FIXED canvas size, never changes during editing
+  // Capture initial canvas size for stable studioConfig
+  // This ref stores the FIRST aspect ratio and never changes
+  const initialCanvasSizeRef = useRef(canvasSize);
+
+  // Studio configuration - Uses INITIAL canvas size, never changes after first render
   // This prevents TwickStudio from re-initializing when aspect ratio changes
+  // Runtime resolution changes are handled via setVideoResolution in EditorWithContext
   const studioConfig = useMemo(() => ({
     videoProps: {
-      width: canvasSize.width,
-      height: canvasSize.height,
+      width: initialCanvasSizeRef.current.width,
+      height: initialCanvasSizeRef.current.height,
     },
     playerProps: {
       maxWidth: 1920,
       maxHeight: 1080,
     },
-  }), [canvasSize.width, canvasSize.height]);
+    // Enable canvas mode for interactive element manipulation (selection, dragging, layering)
+    canvasMode: true,
+  }), []); // Empty deps - uses ref value from first render
 
   return (
     <>
@@ -1425,7 +1535,7 @@ const ManualEditor = () => {
             <TimelineProvider
               initialData={INITIAL_TIMELINE_DATA}
               contextId="vfxb-manual-editor"
-              resolution={{ width: canvasSize.width, height: canvasSize.height }}
+              resolution={{ width: initialCanvasSizeRef.current.width, height: initialCanvasSizeRef.current.height }}
             >
               <div className="h-full twick-studio relative">
                 <EditorWithContext
@@ -1436,6 +1546,7 @@ const ManualEditor = () => {
                   onMuteToggle={handleMuteToggle}
                   onDuplicate={handleDuplicate}
                   previousVolume={previousVolume}
+                  restorePlaybackRef={restorePlaybackRef}
                 />
               </div>
             </TimelineProvider>
