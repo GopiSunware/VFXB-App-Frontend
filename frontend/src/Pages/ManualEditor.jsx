@@ -18,6 +18,11 @@ import {
   Copy,
   Wand2,
   Upload,
+  Video,
+  Plus,
+  Trash2,
+  Play,
+  Pause,
 } from "lucide-react";
 
 // Twick/VFXB Editor imports
@@ -134,9 +139,119 @@ const CustomTimelineControls = ({ editorState, onVolumeChange, onMuteToggle, onD
   return null;
 };
 
+// Custom Video Library component that replaces the default VideoPanel content
+const CustomVideoLibrary = ({ videos, onUploadClick, onAddToTimeline, onDeleteVideo, fileInputRef }) => {
+  const [portalTarget, setPortalTarget] = useState(null);
+  const portalTargetRef = useRef(null);
+
+  // Find and attach to the video panel's media-content container
+  useEffect(() => {
+    const findTarget = () => {
+      // Find the panel-container that contains "Video Library"
+      const panelContainers = document.querySelectorAll('.panel-container');
+      for (const container of panelContainers) {
+        const title = container.querySelector('.panel-title');
+        if (title && title.textContent === 'Video Library') {
+          const mediaContent = container.querySelector('.media-content');
+          if (mediaContent) {
+            const currentTarget = portalTargetRef.current;
+            const isCurrentAttached = currentTarget && document.body.contains(currentTarget);
+            if (mediaContent !== currentTarget || !isCurrentAttached) {
+              portalTargetRef.current = mediaContent;
+              setPortalTarget(mediaContent);
+            }
+            return;
+          }
+        }
+      }
+    };
+
+    // Try immediately
+    findTarget();
+
+    // Observe DOM changes
+    const editorRoot = document.querySelector('.twick-studio') || document.querySelector('.manual-editor-fullscreen');
+    if (editorRoot) {
+      const observer = new MutationObserver(findTarget);
+      observer.observe(editorRoot, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }
+  }, []);
+
+  // Format duration helper
+  const formatDuration = (seconds) => {
+    if (!seconds) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const libraryContent = (
+    <div className="custom-video-library">
+      {videos.length === 0 ? (
+        // Empty state
+        <div className="custom-video-empty-state">
+          <div className="custom-video-empty-icon">
+            <Video className="w-12 h-12" />
+          </div>
+          <p className="custom-video-empty-title">No videos yet</p>
+          <p className="custom-video-empty-subtitle">Upload a video to get started</p>
+          <button onClick={onUploadClick} className="custom-video-upload-btn">
+            <Upload className="w-4 h-4" />
+            <span>Upload Video</span>
+          </button>
+        </div>
+      ) : (
+        // Video grid with videos
+        <>
+          <div className="custom-video-grid">
+            {videos.map((video) => (
+              <div key={video.id} className="custom-video-item">
+                <video
+                  src={video.url}
+                  className="custom-video-thumbnail"
+                  muted
+                  preload="metadata"
+                />
+                <div className="custom-video-duration">{formatDuration(video.durationSeconds)}</div>
+                <div className="custom-video-overlay">
+                  <button
+                    onClick={() => onAddToTimeline(video)}
+                    className="custom-video-add-btn"
+                    title="Add to timeline"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => onDeleteVideo(video)}
+                  className="custom-video-delete-btn"
+                  title="Remove from library"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button onClick={onUploadClick} className="custom-video-add-more-btn">
+            <Plus className="w-4 h-4" />
+            <span>Add More Videos</span>
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  if (portalTarget) {
+    return createPortal(libraryContent, portalTarget);
+  }
+
+  return null;
+};
+
 // Inner component that uses timeline and player context for all editor operations
 // Uses ref-based state sync to avoid infinite re-render loops
-const EditorWithContext = ({ studioConfig, canvasSize, editorStateRef, onVolumeChange, onMuteToggle, onDuplicate, previousVolume, restorePlaybackRef }) => {
+const EditorWithContext = ({ studioConfig, canvasSize, editorStateRef, onVolumeChange, onMuteToggle, onDuplicate, previousVolume, restorePlaybackRef, userVideos, onUploadClick, onAddToTimeline, onDeleteVideo, fileInputRef }) => {
   const {
     setVideoResolution,
     editor,
@@ -265,6 +380,13 @@ const EditorWithContext = ({ studioConfig, canvasSize, editorStateRef, onVolumeC
         onDuplicate={onDuplicate}
         previousVolume={previousVolume}
       />
+      <CustomVideoLibrary
+        videos={userVideos}
+        onUploadClick={onUploadClick}
+        onAddToTimeline={onAddToTimeline}
+        onDeleteVideo={onDeleteVideo}
+        fileInputRef={fileInputRef}
+      />
     </>
   );
 };
@@ -362,6 +484,217 @@ const customStyles = `
     display: none !important;
     opacity: 0 !important;
     visibility: hidden !important;
+  }
+
+  /* ===== Hide default Video Library elements (URL input, preloaded videos) ===== */
+  .twick-studio .panel-container .url-input-container,
+  .twick-studio .panel-container input[placeholder*="video URL"],
+  .twick-studio .panel-container input[placeholder*="Video URL"],
+  .twick-studio .panel-container .panel-section:has(input[type="url"]),
+  .twick-studio .panel-container .panel-section:has(.url-input-container) {
+    display: none !important;
+  }
+
+  /* Hide preloaded/default videos in media grid */
+  .twick-studio .panel-container .media-grid > *:not(.custom-video-item) {
+    display: none !important;
+  }
+
+  /* Hide default empty state */
+  .twick-studio .panel-container .media-content > .empty-state:not(.custom-video-empty-state) {
+    display: none !important;
+  }
+
+  /* ===== Custom Video Library Styles ===== */
+  .custom-video-library {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .custom-video-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 250px;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .custom-video-empty-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--color-bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    color: var(--color-text-tertiary);
+  }
+
+  .custom-video-empty-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 8px 0;
+  }
+
+  .custom-video-empty-subtitle {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin: 0 0 24px 0;
+  }
+
+  .custom-video-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+    color: var(--color-text-primary);
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--duration-normal) var(--ease-standard);
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+  }
+
+  .custom-video-upload-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
+  }
+
+  .custom-video-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .custom-video-item {
+    position: relative;
+    aspect-ratio: 16/9;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--color-bg-tertiary);
+    border: 2px solid transparent;
+    transition: all var(--duration-fast) var(--ease-standard);
+  }
+
+  .custom-video-item:hover {
+    border-color: var(--color-primary);
+    transform: scale(1.02);
+  }
+
+  .custom-video-thumbnail {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .custom-video-duration {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .custom-video-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .custom-video-item:hover .custom-video-overlay {
+    opacity: 1;
+  }
+
+  .custom-video-add-btn {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-standard);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .custom-video-add-btn:hover {
+    background: var(--color-primary-light);
+    transform: scale(1.1);
+  }
+
+  .custom-video-delete-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--color-text-secondary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: all var(--duration-fast) var(--ease-standard);
+  }
+
+  .custom-video-item:hover .custom-video-delete-btn {
+    opacity: 1;
+  }
+
+  .custom-video-delete-btn:hover {
+    background: var(--color-error);
+    color: white;
+  }
+
+  .custom-video-add-more-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: 2px dashed var(--color-border-medium);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-standard);
+    margin-top: 8px;
+  }
+
+  .custom-video-add-more-btn:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: rgba(124, 58, 237, 0.1);
   }
 
   /* ===== Scrollbar Styling ===== */
@@ -946,6 +1279,8 @@ const ManualEditor = () => {
   const videoFileInputRef = useRef(null);
   // Ref to signal that playback should be restored after aspect ratio change
   const restorePlaybackRef = useRef(false);
+  // User uploaded videos for the custom video library
+  const [userVideos, setUserVideos] = useState([]);
 
   // Global video store - shared between AI Editor and Manual Editor
   const storeCurrentVideo = useVideoStore((state) => state.currentVideo);
@@ -1171,7 +1506,7 @@ const ManualEditor = () => {
     navigate("/ai-editor");
   }, [navigate]);
 
-  // Video file upload handler
+  // Video file upload handler - adds to user video library
   const handleVideoFileSelect = useCallback((event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1186,33 +1521,84 @@ const ManualEditor = () => {
     // Create blob URL for local playback
     const videoUrl = URL.createObjectURL(file);
 
-    // Create video object compatible with the store
-    const videoData = {
-      id: `local_${Date.now()}`,
-      name: file.name,
-      url: videoUrl,
-      type: file.type,
-      size: file.size,
-      isLocal: true, // Flag to indicate this is a local file
+    // Get video duration using a temporary video element
+    const tempVideo = document.createElement('video');
+    tempVideo.preload = 'metadata';
+    tempVideo.onloadedmetadata = () => {
+      const videoData = {
+        id: `local_${Date.now()}`,
+        name: file.name,
+        url: videoUrl,
+        type: file.type,
+        size: file.size,
+        durationSeconds: tempVideo.duration,
+        isLocal: true,
+      };
+
+      // Add to user videos library
+      setUserVideos(prev => [...prev, videoData]);
+
+      // Update project name from first video
+      if (userVideos.length === 0) {
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+        setProjectName(nameWithoutExt);
+      }
     };
-
-    // Store in global video store
-    setCurrentVideo(videoData);
-
-    // Update project name from video filename
-    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-    setProjectName(nameWithoutExt);
-
-    // Reset timeline state so it reloads with the new video
-    setVideoLoadedToTimeline(false);
+    tempVideo.src = videoUrl;
 
     // Clear the input so the same file can be selected again
     event.target.value = '';
-  }, [setCurrentVideo, setProjectName, setVideoLoadedToTimeline]);
+  }, [userVideos.length, setProjectName]);
 
   // Trigger file input click
   const handleUploadVideoClick = useCallback(() => {
     videoFileInputRef.current?.click();
+  }, []);
+
+  // Add video from library to timeline
+  const handleAddToTimeline = useCallback(async (video) => {
+    const editor = editorStateRef.current?.editor;
+    if (!editor || !video?.url) {
+      console.log("Cannot add video: editor not ready or no video URL");
+      return;
+    }
+
+    try {
+      console.log("Adding video to timeline:", video.name);
+
+      // Create a new video element
+      const videoElement = new VideoElement(video.url, canvasSize);
+
+      // Update video metadata (duration, dimensions)
+      await videoElement.updateVideoMeta();
+
+      // Set start time at current playhead or 0
+      const currentTime = editorStateRef.current?.currentTime || 0;
+      videoElement.setStart(currentTime);
+
+      // Set end time based on video duration
+      const duration = videoElement.getMediaDuration();
+      videoElement.setEnd(currentTime + duration);
+
+      // Create a video track
+      const track = editor.addTrack("Video Track", "video");
+
+      // Add video element to the track
+      await editor.addElementToTrack(track, videoElement);
+      console.log("Video added to timeline successfully");
+    } catch (error) {
+      console.error("Error adding video to timeline:", error);
+    }
+  }, [canvasSize]);
+
+  // Delete video from library
+  const handleDeleteVideo = useCallback((video) => {
+    // Revoke blob URL to free memory
+    if (video.url && video.isLocal) {
+      URL.revokeObjectURL(video.url);
+    }
+    // Remove from state
+    setUserVideos(prev => prev.filter(v => v.id !== video.id));
   }, []);
 
   // Project name editing
@@ -1472,7 +1858,7 @@ const ManualEditor = () => {
             {/* Divider */}
             <div className="w-px h-6 bg-[#2E2F35]"></div>
 
-            {/* Hidden file input for video upload */}
+            {/* Hidden file input for video upload - triggered from Video Library */}
             <input
               type="file"
               ref={videoFileInputRef}
@@ -1480,16 +1866,6 @@ const ManualEditor = () => {
               accept="video/*,.mp4,.webm,.ogg,.mov,.avi"
               className="hidden"
             />
-
-            {/* Upload Video button */}
-            <button
-              onClick={handleUploadVideoClick}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-[#FFFFFF] bg-[#7C3AED] hover:bg-[#6D28D9] rounded-md transition-all duration-200"
-              title="Upload Video File"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Upload</span>
-            </button>
 
             {/* Load Project button */}
             <button
@@ -1547,6 +1923,11 @@ const ManualEditor = () => {
                   onDuplicate={handleDuplicate}
                   previousVolume={previousVolume}
                   restorePlaybackRef={restorePlaybackRef}
+                  userVideos={userVideos}
+                  onUploadClick={handleUploadVideoClick}
+                  onAddToTimeline={handleAddToTimeline}
+                  onDeleteVideo={handleDeleteVideo}
+                  fileInputRef={videoFileInputRef}
                 />
               </div>
             </TimelineProvider>
